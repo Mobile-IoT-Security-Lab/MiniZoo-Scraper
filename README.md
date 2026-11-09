@@ -25,15 +25,26 @@ the separate Appium service; discovery needs its pinned external adapter.
 
 ## Choose a module
 
-| Module | Native command | Docker command | Guide |
-| --- | --- | --- | --- |
-| Mini App Discovery | `python3 minizoo.py discovery` | `docker compose run --rm discovery` | [Discovery guide](discovery/README.md) |
-| Mini App Crawler | `python3 minizoo.py collection` | `docker compose run --rm collection` | [Initial collection guide](scraper/README.md) |
-| Mini App Version Crawler | `python3 minizoo.py version` | `docker compose run --rm version` | [Version collection guide](version_scraper/README.md) |
+| Module | Native command | Guide |
+| --- | --- | --- |
+| Mini App Discovery | `python3 minizoo.py discovery` | [Discovery guide](discovery/README.md) |
+| Mini App Crawler | `python3 minizoo.py collection` | [Initial collection guide](scraper/README.md) |
+| Mini App Version Crawler | `python3 minizoo.py version` | [Version collection guide](version_scraper/README.md) |
 
-As shown, these commands display help. Use a separate phone
-and output directory for simultaneous roles. Optional batch collection and local
-consolidation are described in the [batch guide](scraper/automation/README.md).
+To try each command's help with Docker, no phone, input files or local mounts
+are needed:
+
+```sh
+docker run --rm --network none minizoo-scraper:public discovery --help
+docker run --rm --network none minizoo-scraper:public collection --help
+docker run --rm --network none minizoo-scraper:public version --help
+```
+
+For a first live run, prepare the phone and inputs in the selected guide, then
+use `--max-queries 1` for discovery, `--limit 1` for initial collection or
+`--max-items 1` for version collection. Use a separate phone and output directory
+for simultaneous roles. Optional batch collection and local consolidation are
+in the [batch guide](scraper/automation/README.md).
 
 Saved packages can be processed without a phone:
 
