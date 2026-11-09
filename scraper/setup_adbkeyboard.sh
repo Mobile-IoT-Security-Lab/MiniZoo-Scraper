@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")"
-APK="ADBKeyboard.apk"
+APK="${ADBKEYBOARD_APK:-${MINIZOO_DATA_DIR:-$PWD/../collection_results}/tools/ADBKeyboard.apk}"
 SHA256="e698adea5633135a067b038f9a0cf41baa4de09888713a81593fb2b9682cdc59"
 : "${ANDROID_SERIAL:?Imposta ANDROID_SERIAL sul device da configurare}"
 URL="https://raw.githubusercontent.com/senzhk/ADBKeyBoard/master/ADBKeyboard.apk"
@@ -17,6 +17,7 @@ if ! adb devices | grep -q $'\tdevice'; then
   exit 1
 fi
 
+mkdir -p "$(dirname "$APK")"
 if [ ! -f "$APK" ]; then
   echo "Download ADBKeyboard da $URL"
   curl -L --fail -o "$APK" "$URL"
@@ -34,8 +35,5 @@ echo "Installing ADBKeyboard on the device..."
 adb install -r "$APK"
 adb shell ime enable com.android.adbkeyboard/.AdbIME || true
 adb shell ime set com.android.adbkeyboard/.AdbIME || true
-
-echo "OK. Test unicode: invio broadcast ADB_INPUT_TEXT."
-adb shell am broadcast -a ADB_INPUT_TEXT --es msg '测试中文輸入' >/dev/null || true
 
 echo "Fatto. Puoi lanciare wechat_csv_scraper.py"

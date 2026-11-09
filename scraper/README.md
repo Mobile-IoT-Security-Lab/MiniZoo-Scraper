@@ -5,15 +5,14 @@ original packages and evidence locally. Navigation uses ADB and ADBKeyboard.
 This module does not require Appium, the discovery module or a versioning queue.
 Run the following commands from the repository root.
 
-## Test independently
+## Commands
 
 ```sh
 python3 minizoo.py collection --help
-python3 minizoo.py test collection
 ```
 
-Tests use synthetic files and mocked devices. No phone, input catalogue or
-external dependency checkout is needed.
+For a container installation, use the independent `collection` service in the
+[Docker guide](../docs/DOCKER.md).
 
 ## Installation
 
@@ -30,7 +29,7 @@ ANDROID_SERIAL=DEVICE_A bash scraper/setup_adbkeyboard.sh
 
 The keyboard installer downloads the separately licensed
 [ADBKeyboard](https://github.com/senzhk/ADBKeyBoard) APK, verifies its pinned
-SHA-256, installs and enables it on this phone, and sends a short Unicode test.
+SHA-256, and installs and enables it on this phone.
 The APK is not bundled. The expected checksum is
 `e698adea5633135a067b038f9a0cf41baa4de09888713a81593fb2b9682cdc59`.
 
@@ -98,7 +97,6 @@ Saved packages can be inspected independently:
 
 ```sh
 python3 minizoo.py inspect /absolute/path/package.wxapkg
-python3 minizoo.py test core
 ```
 
 ## Recovering an interrupted run

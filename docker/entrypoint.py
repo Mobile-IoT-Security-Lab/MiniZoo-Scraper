@@ -11,7 +11,7 @@ import minizoo
 
 def main():
     args = sys.argv[1:]
-    if not args or args[0] in {*minizoo.COMMANDS, "test", "help", "--help", "-h"}:
+    if not args or args[0] in {*minizoo.COMMANDS, "help", "--help", "-h"}:
         return minizoo.main(args)
     os.execvp(args[0], args)
 

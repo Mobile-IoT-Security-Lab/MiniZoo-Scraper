@@ -4,7 +4,7 @@ Appium controls the UI; this module only reads the existing Android cache. A
 changed file is a candidate, never proof of its owning AppID or release.
 
 The evidence JSON must come from a trusted adapter reading *loaded package*
-metadata. Its schema is illustrated in tests/test_artifacts.py. Merely writing
+metadata. Merely writing
 the expected values into that JSON does not establish identity.
 """
 import hashlib

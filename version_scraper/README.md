@@ -5,17 +5,14 @@ against a working CSV. Appium navigates, ADB reads the cache and Frida verifies
 identity. This module has its own configuration and checkpoints; it does not
 launch discovery or initial collection. Run commands from the repository root.
 
-## Test independently
+## Commands
 
 ```sh
 python3 minizoo.py version --help
-python3 minizoo.py test version
 ```
 
-The suite uses synthetic inputs and simulated phones. It tests baseline updates,
-partial results, pause/resume, source preservation and saved manifest integrity.
-The [core suite](../MiniZooCollectionCore/README.md#installation-and-tests) separately
-checks shared identity, metadata, hashes and reconstruction.
+For a container installation, use the independent `version` service in the
+[Docker guide](../docs/DOCKER.md).
 
 ## Installation
 
@@ -38,8 +35,9 @@ swiftc version_scraper/tools/ocr.swift -o version_scraper/tools/ocr
 For native Linux, install Tesseract with English and Simplified Chinese language
 data and `python3 -m pip install -r docker/requirements.txt`. The configuration
 generator chooses Tesseract on Linux and Vision on macOS; `--ocr` overrides it.
-[Docker](../docs/DOCKER.md) includes Tesseract and its Python dependency, while
-ADB and Appium remain host services. OCR selects controls; runtime evidence
+[Docker](../docs/DOCKER.md) includes Tesseract, Python, Appium, the JDK and
+Android SDK. On macOS, only the USB ADB server stays on the host; Linux can
+run that server in Docker too. OCR selects controls; runtime evidence
 still determines whether a package can be accepted.
 
 ## Configure your input once

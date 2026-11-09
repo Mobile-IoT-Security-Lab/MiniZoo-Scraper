@@ -1,0 +1,32 @@
+# Optional Linux Engine USB service. Do not use on macOS/Docker Desktop.
+# Stop an idle native ADB server first: only one server can own USB/port 5037.
+services:
+  adb:
+    profiles: ["linux-usb"]
+    image: minizoo-scraper:public
+    build: .
+    network_mode: host
+    init: true
+    user: "0:0"
+    entrypoint: ["adb"]
+    # Without -a, this listens only on loopback. Debian ADB expects tcp:PORT.
+    command: ["-L", "tcp:5037", "server", "nodaemon"]
+    device_cgroup_rules:
+      - "c 189:* rwm"
+    volumes:
+      - type: bind
+        source: /dev/bus/usb
+        target: /dev/bus/usb
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ADB_KEYS_DIR:-./private/adb}
+        target: /root/.android
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "adb", "-H", "127.0.0.1", "devices"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    stop_grace_period: 15s

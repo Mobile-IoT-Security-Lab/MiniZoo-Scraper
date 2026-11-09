@@ -21,7 +21,7 @@ x-data-mount: &data-mount
 x-runtime: &runtime
   image: minizoo-scraper:public
   build: .
-  # Native host ADB owns USB/Frida tunnels; native Appium owns UI sessions.
+  # All roles share the same loopback ADB server and Frida tunnels.
   # Docker Desktop needs Settings > Resources > Network > Enable host networking.
   network_mode: host
   init: true
@@ -68,3 +68,25 @@ services:
     <<: *runtime
     profiles: ["tools"]
     command: ["help"]
+  # Explicitly start only for version navigation; no phone session starts here.
+  appium:
+    profiles: ["appium"]
+    image: minizoo-appium:public
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: docker/Appium.Dockerfile
+      platforms: ["linux/amd64"]
+    network_mode: host
+    init: true
+    environment:
+      APPIUM_PORT: ${APPIUM_PORT:-4723}
+    mem_limit: 2g
+    cpus: 2.0
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+(process.env.APPIUM_PORT||4723)+'/status').then(async r=>{if(!r.ok||!(await r.json()).value.ready)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 6
+    stop_grace_period: 30s

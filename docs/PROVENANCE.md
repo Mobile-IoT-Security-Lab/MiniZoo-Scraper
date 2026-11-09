@@ -20,9 +20,9 @@ into the container image and is not covered by the project's MIT grant.
 The initial collector originated in
 [WeChatMiniAppScraper](https://github.com/luca959/WeChatMiniAppScraper), with local
 source revision `be2f02653a98a4ccd42270f3a175bf873365fa3b` plus subsequent working
-changes. Its explicit batch supervisor, runtime attribution, static metadata extraction and
-tests are included; legacy schedulers and one-off enrichment tools were removed. The earlier repository history was not imported into this
-combined repository.
+changes. Its explicit batch supervisor, runtime attribution and static metadata
+extraction are included; legacy schedulers and one-off enrichment tools were
+removed. The earlier repository history was not imported into this repository.
 
 The version collector originated in the working project `WeChatScraperVersion`.
 It includes Appium/ADB collection, Frida evidence readers, conservative version
@@ -53,12 +53,13 @@ which components are installed and which remain external.
 
 Author names are retained in `CITATION.cff`; contact addresses are omitted.
 
-Only synthetic example CSVs and test fixtures are included. Original `.wxapkg`
+Only a synthetic example CSV is included. Original `.wxapkg`
 files, device screenshots, acquisition logs, database files, private directory
 IDs and credentials are excluded. Mini Program packages and platform content
 retain their respective third-party rights; the software MIT license does not
 grant rights over a collected corpus.
 
-Prerequisites and bounded validation scope are documented in the collector
-guides and [Docker guide](DOCKER.md). No arXiv identifier, DOI, publication status
-or container/device test result is implied where none has been obtained.
+Prerequisites are documented in the collector guides and [Docker guide](DOCKER.md).
+The Appium image installs the Google Android SDK under its own license; the
+Docker build accepts the SDK licenses. No arXiv identifier, DOI or publication
+status is assigned here.

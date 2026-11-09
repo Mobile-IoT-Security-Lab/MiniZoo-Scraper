@@ -6,15 +6,6 @@ separate. This supervisor distributes initial collection across the explicitly
 configured phones and merges local results; it does not install a scheduler.
 Run commands below from the repository root on macOS or Linux.
 
-## Test without phones
-
-```sh
-python3 minizoo.py test collection
-```
-
-The suite covers disjoint queues, locks, stop behavior, verified consolidation
-and preservation of original runs using mocked workers.
-
 ## Configure and start explicitly
 
 Copy and edit the ignored local settings, including distinct device serials:
@@ -60,3 +51,21 @@ Canonical packages and the two operational CSVs stay under
 `collection_results/initial/all_mini_apps/`. Source attempts, metadata and
 checkpoints are retained. No periodic retry daemon or external scheduler
 integration is included in this public release.
+
+## Run in Docker
+
+Prepare the local mounts and phone connection in the [Docker guide](../../docs/DOCKER.md).
+Use container paths in settings and choose the intended phones explicitly:
+
+```sh
+docker compose run --rm collector python3 scraper/build_final_miniapp_csvs.py
+docker compose run --rm -e WECHAT_DEVICES=DEVICE_A,DEVICE_B collector python3 scraper/automation/wechat_dual_scrape_supervisor.py
+```
+
+The defaults use `/data/initial` and `/data/automation`. To build from a discovery
+database, pass `-e WECHAT_DISCOVERY_DB=/data/discovery/data.db` to the builder.
+After stopping the supervisor, consolidate independently with:
+
+```sh
+docker compose run --rm collector python3 scraper/automation/wechat_active_merge.py
+```

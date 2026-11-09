@@ -11,7 +11,6 @@ Crawler, not a separate discovery or scheduling service.
 From the repository root:
 
 ```sh
-python3 minizoo.py test core
 python3 minizoo.py inspect /absolute/package.wxapkg
 python3 minizoo.py decompile --package /absolute/package.wxapkg --output collection_results/reconstruction-trial
 python3 minizoo.py metadata --help
@@ -132,7 +131,7 @@ original policy; old numeric package limits are never retroactively removed from
 historical evidence. New invocations ignore the retired `--packages-per-app`
 option so old launchers cannot truncate acquisitions.
 
-## Installation and tests
+## Installation
 
 The release bundles this directory alongside `scraper/` and `version_scraper/`.
 Their bootstrap modules discover this layout automatically. Direct scripts accept
@@ -143,16 +142,7 @@ The default reconstruction command uses the existing pinned wxappUnpacker and
 Node.js 26 permission mode. The command may be configured as an argument list;
 there is no shell interpolation. The Android cache is never deleted.
 
-The dedicated suite lives in `MiniZooCollectionCore/tests/`. It exercises
-runtime identity, package coverage, acquisition preservation, reconstruction,
-public metadata and tamper detection with synthetic fixtures:
-
-```sh
-python3 minizoo.py test core
-python3 minizoo.py test core --integration
-```
-
-The integration option requires the installed pinned decompiler and Node.js;
-no phone is contacted. Acquisition primitives were extracted from the MiniZoo
-collectors on 3 November 2026. See [testing](../docs/TESTING.md) and
-[provenance](../docs/PROVENANCE.md) for scope and dependency licenses.
+Acquisition primitives were extracted from the MiniZoo collectors on 3 November
+2026. See [provenance](../docs/PROVENANCE.md) for dependency licenses. All processing
+commands are also available through the `collector` service in the
+[Docker guide](../docs/DOCKER.md#inspect-or-reconstruct-saved-data-independently).

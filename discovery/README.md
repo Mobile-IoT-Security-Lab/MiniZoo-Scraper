@@ -4,16 +4,14 @@ Find WeChat AppIDs and public metadata from keywords. This module has its own
 SQLite queue and page checkpoints. It does not start either package collector.
 All commands below run from the repository root.
 
-## Test independently
+## Commands
 
 ```sh
 python3 minizoo.py discovery --help
-python3 minizoo.py test discovery
 ```
 
-The default tests exercise persistence, metadata, pagination, query expansion,
-pauses, device binding and interrupted requests using a synthetic adapter.
-They do not require a phone, Frida, MiniCrawler or a network connection.
+For a container installation, use the independent `discovery` service in the
+[Docker guide](../docs/DOCKER.md).
 
 ## Install the live adapter
 
@@ -22,7 +20,6 @@ Only this module needs the separately maintained MiniCrawler source:
 
 ```sh
 git submodule update --init discovery/vendor/MiniCrawler
-python3 minizoo.py test discovery --integration
 ```
 
 The adapter verifies the pinned source files before loading them. The upstream

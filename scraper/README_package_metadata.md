@@ -72,18 +72,14 @@ Pass existing preserved files. Remote paths must align with the local path list.
 When `query_record['sha256']` contains expected hashes separated by `;`, they are
 checked before export.
 
-From the repository root, inspect a package or test the modules independently:
+From the repository root, inspect a saved package independently:
 
-```bash
+```sh
 python3 minizoo.py inspect /absolute/path/package.wxapkg
-python3 minizoo.py test collection
-python3 minizoo.py test core
 ```
 
-The suite exercises search, runtime observation, acquisition, manifest creation,
-extraction, merge and catalogue export with mocks and synthetic files. Offline
-tests and replay of previously saved observations do not replace a fresh live
-check of an updated runtime probe.
+With Docker, place the package under `collection_results/` and use its `/data/`
+path with `docker compose run --rm collector inspect /data/path/package.wxapkg`.
 
 ## Identifying the app that opened
 

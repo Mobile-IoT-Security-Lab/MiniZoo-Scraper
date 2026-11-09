@@ -18,6 +18,7 @@ def main():
                         help="Native result directory; ignored with --container")
     parser.add_argument("--ocr", choices=("vision", "tesseract"),
                         help="Native OCR; defaults to Vision on macOS, Tesseract elsewhere")
+    parser.add_argument("--appium-url", default="http://127.0.0.1:4723", help="Appium server endpoint")
     args = parser.parse_args()
     config = json.loads((root / "version_scraper/config.example.json").read_text())
     if args.output.exists():
@@ -33,6 +34,7 @@ def main():
     if not count:
         parser.error("CSV contains no records")
     data = Path("/data/version") if args.container else args.data_dir.expanduser().resolve()
+    config["appium_url"] = args.appium_url
     config.update(source_csv=f"/input/{args.csv.name}" if args.container else str(args.csv.expanduser().resolve()),
                   work_csv=str(data / "apps.csv"), output_dir=str(data / "output"), expected_records=count)
     if args.container or args.ocr == "tesseract" or (not args.ocr and sys.platform != "darwin"):
