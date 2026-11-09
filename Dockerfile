@@ -17,7 +17,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
        adb ca-certificates git libatomic1 tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim \
     && rm -rf /var/lib/apt/lists/*
 
-COPY version_scraper/requirements.txt /tmp/requirements.txt
+COPY requirements.txt /tmp/requirements.txt
 RUN pip install --requirement /tmp/requirements.txt
 
 # Keep the upstream source, commit and GPL license with the executable tool.
@@ -32,12 +32,15 @@ COPY docker/requirements.txt /tmp/docker-requirements.txt
 RUN pip install --requirement /tmp/docker-requirements.txt
 
 WORKDIR /opt/wechat
-COPY LICENSE README.md CITATION.cff ./
+COPY LICENSE README.md CITATION.cff minizoo.py ./
 COPY docs ./docs
 COPY MiniZooCollectionCore ./MiniZooCollectionCore
 COPY scraper ./scraper
 COPY version_scraper ./version_scraper
 COPY docker ./docker
+COPY discovery ./discovery
+COPY tools ./tools
+COPY tests ./tests
 RUN useradd --create-home --uid 1000 collector \
     && mkdir -p /data /input /config \
     && chmod -R a+rX /opt/wechat /opt/wxappUnpacker \

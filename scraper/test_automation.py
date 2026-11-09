@@ -33,7 +33,6 @@ class AutomationConfigurationTests(unittest.TestCase):
         from automation import wechat_config
         self.assertEqual(settings.root, Path(wechat_config.__file__).resolve().parent.parent)
         self.assertEqual(settings.state, settings.root.parent / 'collection_results' / 'automation')
-        self.assertEqual(settings.cron_jobs, [])
         self.assertEqual(settings.data, settings.root.parent / 'collection_results' / 'initial')
 
 
@@ -86,7 +85,7 @@ class SupervisorFinalizationTests(unittest.TestCase):
         error = OSError('monitor read failed')
         with TemporaryDirectory() as temp, ExitStack() as stack:
             stack.enter_context(patch.dict(os.environ, {'WECHAT_CLEANUP_VERIFIED_RUN': '1'}))
-            stack.enter_context(patch.object(supervisor, 'SETTINGS', Mock(cron_jobs=[])))
+            stack.enter_context(patch.object(supervisor, 'SETTINGS', Mock()))
             stack.enter_context(patch.object(supervisor, 'DEVICES', []))
             stack.enter_context(patch.object(supervisor, 'prepare_run', return_value=Path(temp).resolve()))
             stack.enter_context(patch.object(supervisor, 'wake_devices'))
@@ -114,7 +113,7 @@ class SupervisorFinalizationTests(unittest.TestCase):
         for cleanup, error in [('', None), ('1', RuntimeError('rebuild failed'))]:
             with self.subTest(cleanup=cleanup), TemporaryDirectory() as temp, ExitStack() as stack:
                 stack.enter_context(patch.dict(os.environ, {'WECHAT_CLEANUP_VERIFIED_RUN': cleanup}))
-                settings = Mock(cron_jobs=[])
+                settings = Mock()
                 stack.enter_context(patch.object(supervisor, 'SETTINGS', settings))
                 stack.enter_context(patch.object(supervisor, 'DEVICES', []))
                 stack.enter_context(patch.object(supervisor, 'prepare_run', return_value=Path(temp).resolve()))

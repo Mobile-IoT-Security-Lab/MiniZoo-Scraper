@@ -12,7 +12,8 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-import discovery
+import main as discovery
+from fakes import Crawler, Batch
 
 
 def response(items=(), **extra):
@@ -48,12 +49,17 @@ class ResponseTests(unittest.TestCase):
             discovery.load_source(Path(tmp))
 
 
-@unittest.skipUnless(os.environ.get("MINICRAWLER_SOURCE"), "Set MINICRAWLER_SOURCE to the pinned read-only checkout")
-class MountedSourceTests(unittest.TestCase):
+class QueueTests(unittest.TestCase):
+    integration = False
+
     def setUp(self):
-        self.source = Path(os.environ["MINICRAWLER_SOURCE"])
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
+        self.source = Path(os.environ["MINICRAWLER_SOURCE"]) if self.integration else Path(self.tmp.name) / 'adapter'
+        if not self.integration:
+            adapter = patch.object(discovery, 'load_source', return_value=(Crawler, Batch))
+            adapter.start()
+            self.addCleanup(adapter.stop)
         self.path = Path(self.tmp.name) / "discovery/data.db"
         discovery.initialize(self.path, self.source, ["seed", "seed"])
         self.crawler, self.batch = discovery.load_source(self.source)
@@ -92,6 +98,49 @@ class MountedSourceTests(unittest.TestCase):
         self.apply("seed", response())
         self.assertEqual(discovery.state(self.db, "empty_queries"), [])
         self.assertEqual(self.db.execute("SELECT status FROM query_queue WHERE query='seed'").fetchone()[0], "done")
+
+    def test_sparse_response_preserves_prior_metadata_and_actual_raw_items(self):
+        full = dict(item(), source={"title": "Example developer"}, iconUrl="https://example.org/icon.png",
+                    categoryName="Tools")
+        self.apply("seed", response([full]))
+        sparse = {"jumpInfo": full["jumpInfo"], "title": "Updated observed name"}
+        self.apply("seed", response([sparse]))
+        with sqlite3.connect(self.path) as reopened:
+            row = reopened.execute("SELECT name,description,developer,icon_url,category,raw_json FROM miniapps").fetchone()
+            observations = [json.loads(r[0]) for r in reopened.execute("SELECT response FROM discovery_observations ORDER BY id")]
+        self.assertEqual(row[:5], ("Updated observed name", "Test description", "Example developer",
+                                   "https://example.org/icon.png", "Tools"))
+        self.assertEqual(json.loads(row[5]), sparse)
+        self.assertEqual(list(self.crawler.iter_items(discovery.inspect_response(observations[0]))), [full])
+        self.assertEqual(list(self.crawler.iter_items(discovery.inspect_response(observations[1]))), [sparse])
+
+    def test_nameless_appid_is_preserved_and_is_not_an_empty_search(self):
+        self.apply("seed", response([{"jumpInfo": {"appID": "wx0000000000000001"}}]))
+        self.assertEqual(discovery.status(self.db)["apps"], 1)
+        self.assertEqual(discovery.state(self.db, "empty_queries", []), [])
+        self.assertEqual(self.db.execute("SELECT name FROM miniapps").fetchone()[0], "")
+
+    def test_empty_nested_result_is_still_an_empty_query(self):
+        self.apply("seed", response(data=[{"subBoxes": [{"items": []}]}]))
+        self.assertEqual(discovery.state(self.db, "empty_queries", []), ["seed"])
+
+    def test_category_requires_native_value_and_conflicting_identity_is_rejected(self):
+        self.apply("seed", response([dict(item(), category={"unexpected": "value"})]))
+        self.assertEqual(self.db.execute("SELECT category FROM miniapps").fetchone()[0], "")
+        self.apply("seed", response([dict(item(), isMinigame=1)]))
+        self.assertEqual(self.db.execute("SELECT category FROM miniapps").fetchone()[0], "Mini game")
+        with self.assertRaisesRegex(RuntimeError, "no valid Mini Program"):
+            self.apply("seed", response([dict(item(), appID="wx0000000000000002")]))
+        self.assertEqual(discovery.status(self.db)["apps"], 1)
+
+    def test_failed_projection_preserves_raw_response_for_retry(self):
+        with patch.object(discovery, "save_records", side_effect=RuntimeError("disk write failed")):
+            with self.assertRaisesRegex(RuntimeError, "disk write failed"):
+                self.apply("seed", response([item()]))
+        with sqlite3.connect(self.path) as reopened:
+            saved = json.loads(reopened.execute("SELECT response FROM discovery_observations").fetchone()[0])
+        self.apply("seed", saved)
+        self.assertEqual(discovery.status(self.db)["apps"], 1)
 
     def test_page_cap_retains_cursor_and_needs_explicit_requeue(self):
         outcome = discovery.apply_page(self.db, self.crawler, self.batch, "seed",
@@ -187,6 +236,11 @@ class MountedSourceTests(unittest.TestCase):
         with discovery.exclusive(self.path), self.assertRaisesRegex(RuntimeError, "Another discovery"):
             with discovery.exclusive(self.path):
                 self.fail("Second writer acquired the lock")
+
+
+@unittest.skipUnless(os.environ.get("MINICRAWLER_SOURCE"), "Optional pinned adapter: use test discovery --integration")
+class MountedSourceTests(QueueTests):
+    integration = True
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ import unittest
 @unittest.skipUnless(shutil.which('node'), 'Node.js is required to exercise the write serialization')
 class SerialWriteTest(unittest.TestCase):
     def run_node(self, script):
-        preload = Path(__file__).resolve().parents[1] / 'tools' / 'serial_writes.cjs'
+        preload = Path(__file__).resolve().parents[1] / 'minizoo_collection' / 'tools' / 'serial_writes.cjs'
         with tempfile.TemporaryDirectory() as directory:
             result = subprocess.run(['node', '-e', script, str(preload)], cwd=directory,
                                     capture_output=True, text=True, timeout=15)

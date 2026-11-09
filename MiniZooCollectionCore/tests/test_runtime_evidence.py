@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from tools.runtime_evidence import EvidenceError, canonical_path, finish_evidence, read_messages, select_binding, package_config_roots
+from minizoo_collection.runtime import EvidenceError, canonical_path, finish_evidence, read_messages, select_binding, package_config_roots
 
 
 APPID = "wx0123456789abcdef"
@@ -186,7 +186,7 @@ class RuntimeEvidenceTests(unittest.TestCase):
         self.assertEqual(self.bind()["method"], "runtime_object_graph")
 
     def test_cached_main_is_copied_only_by_verified_runtime_path(self):
-        with patch("tools.runtime_evidence.artifacts.capture_selected", return_value=[self.package]) as capture:
+        with patch("minizoo_collection.runtime.artifacts.capture_selected", return_value=[self.package]) as capture:
             evidence, packages = finish_evidence(self.bind(), [], "serial", APPID, "test-attempt", self.root)
         capture.assert_called_once_with("serial", [canonical_path(REMOTE)], self.root, adb="adb")
         self.assertEqual(packages, [self.package])
@@ -211,7 +211,7 @@ class RuntimeEvidenceTests(unittest.TestCase):
 
     def test_main_only_complete_requires_empty_inventory_and_original_config(self):
         self.configure_inventory([])
-        with patch("tools.runtime_evidence.cache_md5_inventory") as inventory:
+        with patch("minizoo_collection.runtime.cache_md5_inventory") as inventory:
             evidence, _ = finish_evidence(self.bind(), [self.package], "serial", APPID, "test-attempt", self.root)
         inventory.assert_not_called()
         self.assertEqual(evidence["coverage"], "complete")
@@ -227,8 +227,8 @@ class RuntimeEvidenceTests(unittest.TestCase):
         # The first recorded path is stale; a filename is never proof of content.
         self.config["modules"][0]["fields"]["pkgPath"] = canonical_path(REMOTE).replace("_123_68", "stale")
         cache[self.config["modules"][0]["fields"]["pkgPath"]] = "0" * 32
-        with patch("tools.runtime_evidence.cache_md5_inventory", return_value=cache), \
-                patch("tools.runtime_evidence.artifacts.capture_selected", return_value=subpackages) as capture:
+        with patch("minizoo_collection.runtime.cache_md5_inventory", return_value=cache), \
+                patch("minizoo_collection.runtime.artifacts.capture_selected", return_value=subpackages) as capture:
             evidence, copied = finish_evidence(self.bind(), [self.package], "serial", APPID, "test-attempt", self.root)
         self.assertEqual(capture.call_count, len(subpackages))
         self.assertEqual({c.args[1][0] for c in capture.call_args_list},
@@ -243,7 +243,7 @@ class RuntimeEvidenceTests(unittest.TestCase):
 
     def test_missing_module_and_truncated_inventory_remain_partial(self):
         subpackages = self.configure_inventory(["feature", "missing"])
-        with patch("tools.runtime_evidence.cache_md5_inventory", return_value={}):
+        with patch("minizoo_collection.runtime.cache_md5_inventory", return_value={}):
             evidence, _ = finish_evidence(self.bind(), [self.package, subpackages[0]], "serial", APPID, "test-attempt", self.root)
         self.assertEqual(evidence["coverage"], "partial")
         self.assertEqual([m["status"] for m in evidence["declared_modules"]], ["verified", "missing"])
@@ -262,7 +262,7 @@ class RuntimeEvidenceTests(unittest.TestCase):
     def test_config_root_disagreement_prevents_unmatched_module_capture(self):
         subpackages = self.configure_inventory(["feature"])
         self.config["modules"][0]["fields"]["name"] = "/different/"
-        with patch("tools.runtime_evidence.cache_md5_inventory") as inventory:
+        with patch("minizoo_collection.runtime.cache_md5_inventory") as inventory:
             evidence, _ = finish_evidence(self.bind(), [self.package] + subpackages, "serial", APPID, "test-attempt", self.root)
         inventory.assert_not_called()
         self.assertEqual(evidence["coverage"], "partial")

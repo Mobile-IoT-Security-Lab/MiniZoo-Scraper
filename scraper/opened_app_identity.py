@@ -5,8 +5,10 @@ never receives the CSV's requested AppID; original logs and package bytes are
 retained. No device navigation, cache deletion or package JavaScript execution.
 """
 import ast
+import datetime as dt
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -17,7 +19,7 @@ CACHE_ROOT = "/data/data/com.tencent.mm/MicroMsg/appbrand/pkg"
 SCHEMA = "opened_app_v1"
 RUNTIME_CLASS = "com.tencent.mm.plugin.appbrand.AppBrandRuntime"
 APPID_RE = re.compile(r"wx[0-9a-f]{16}")
-METADATA_FIELDS = ("appid", "name", "developer", "username", "description", "icon_url", "app_version")
+METADATA_FIELDS = ("appid", "name", "category", "developer", "username", "description", "icon_url", "app_version")
 
 class EvidenceError(RuntimeError):
     pass
@@ -309,15 +311,32 @@ def binding_signature(binding):
 
 
 def write_json(path, value):
+    """Publish a durable, complete receipt without replacing existing evidence."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("x", encoding="utf-8") as stream:
-        json.dump(value, stream, ensure_ascii=False, indent=2)
-        stream.write("\n")
+    temporary = path.with_name("." + path.name + "." + uuid.uuid4().hex + ".tmp")
+    try:
+        with temporary.open("x", encoding="utf-8") as stream:
+            json.dump(value, stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(temporary, path)
+        sync_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def sync_directory(path):
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def resolve_frida(value=""):
-    candidates = [value] if value else ["frida", str(Path(__file__).parent / "MiniCrawler/.venv-frida/bin/frida")]
+    candidates = [value] if value else ["frida"]
     for candidate in candidates:
         found = shutil.which(candidate)
         if found:
@@ -506,10 +525,13 @@ def collect_opened_app(probe, attempt_id, directory, pull=None, maximum=None):
     receipt = {"schema": SCHEMA, "attempt_id": attempt_id, "device_serial": probe.serial,
                "appid": evidence["appid"], "metadata": evidence["observed_metadata"],
                "package_attribution": "runtime_verified", "observed_at": evidence["runtime_observed_at"],
+               "collection_time": dt.datetime.now(dt.timezone.utc).isoformat(),
                "packages": packages, "maximum_packages": None,
                "acquisition_policy": "all_available_components",
                "coverage": evidence["coverage"], "coverage_limits": evidence["coverage_limits"],
                "common_evidence_path": "evidence.json", "common_evidence_sha256": _artifacts.sha256_file(common_path)}
+    if "public_metadata_status" in evidence:
+        receipt["public_metadata_status"] = evidence["public_metadata_status"]
     for phase in ("before", "after"):
         receipt[phase] = evidence["observations"][phase]["path"]
         receipt[phase + "_sha256"] = evidence["observations"][phase]["sha256"]
@@ -534,10 +556,19 @@ def load_verified_receipt(record, run_dir):
     common = json.loads(common_path.read_text())
     if (common.get("appid") != record.get("appid") or receipt.get("appid") != record.get("appid")
             or common.get("observed_metadata") != receipt.get("metadata")
+            or common.get("runtime_observed_at") != receipt.get("observed_at")
             or common.get("device") != record.get("device_serial")
             or receipt.get("coverage") != common.get("coverage")
-            or receipt.get("coverage_limits") != common.get("coverage_limits")):
+            or receipt.get("coverage_limits") != common.get("coverage_limits")
+            or receipt.get("public_metadata_status") != common.get("public_metadata_status")):
         raise EvidenceError("Runtime receipt identity, metadata or coverage differs")
+    if "collection_time" in receipt:
+        try:
+            timestamp = dt.datetime.fromisoformat(receipt["collection_time"].replace("Z", "+00:00"))
+            if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+                raise ValueError("Timestamp has no timezone")
+        except (ValueError, TypeError, AttributeError) as error:
+            raise EvidenceError("Invalid recorded collection time") from error
     packages = []
     for item in receipt["packages"]:
         path = confined_file(evidence.parent, item["local_file"])

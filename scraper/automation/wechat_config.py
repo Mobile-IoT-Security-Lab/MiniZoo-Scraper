@@ -41,7 +41,6 @@ class Settings:
     state: Path
     devices: list[str]
     data: Path
-    cron_jobs: list[str]
     mount: str
 
     @classmethod
@@ -54,7 +53,6 @@ class Settings:
             state=Path(os.environ.get('WECHAT_STATE_DIR', str(root.parent / 'collection_results' / 'automation'))).expanduser().resolve(),
             devices=parse_devices(raw_devices) if raw_devices else [],
             data=data,
-            cron_jobs=[x.strip() for x in os.environ.get('WECHAT_HERMES_CRON_IDS', '').split(',') if x.strip()],
             mount=os.environ.get('WECHAT_REQUIRED_MOUNT', ''),
         )
 

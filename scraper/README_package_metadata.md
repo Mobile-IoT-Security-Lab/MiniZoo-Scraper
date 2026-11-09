@@ -72,10 +72,12 @@ Pass existing preserved files. Remote paths must align with the local path list.
 When `query_record['sha256']` contains expected hashes separated by `;`, they are
 checked before export.
 
-From `scraper/`, run the relevant tests:
+From the repository root, inspect a package or test the modules independently:
 
 ```bash
-python3 -B -m unittest test_package_metadata test_wechat_csv_metadata test_supervisor_compat -v
+python3 minizoo.py inspect /absolute/path/package.wxapkg
+python3 minizoo.py test collection
+python3 minizoo.py test core
 ```
 
 The suite exercises search, runtime observation, acquisition, manifest creation,
@@ -106,7 +108,7 @@ associations. Historical canonical files are not retroactively certified.
 ## Shared acquisition engine
 
 `minizoo_core_bootstrap.py` discovers the bundled `../MiniZooCollectionCore/`.
-`MINIZOO_CORE_PATH` can select another installation. Package acquisition,
+Direct scripts support `MINIZOO_CORE_PATH`; the common launcher selects this checkout’s bundled core. Package acquisition,
 evidence replay, static parsing and reconstruction are shared with the version
 collector; initial navigation uses ADB and ADBKeyboard, while version navigation
 uses Appium.

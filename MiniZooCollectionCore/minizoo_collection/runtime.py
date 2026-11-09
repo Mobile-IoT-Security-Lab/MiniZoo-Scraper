@@ -7,6 +7,7 @@ import argparse
 import ast
 import hashlib
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import shlex
@@ -16,7 +17,7 @@ import sys
 import uuid
 
 import shutil
-from . import artifacts
+from . import artifacts, public_metadata
 
 
 class EvidenceError(RuntimeError):
@@ -293,8 +294,17 @@ def verified_content(package, expected_md5):
 def write_json(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_text(path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+
+
+def write_text(path, value):
+    """Persist raw observations before downstream parsing or decompilation."""
+    path = Path(path)
+    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+    with temporary.open("x", encoding="utf-8") as stream:
+        stream.write(value)
+        stream.flush()
+        os.fsync(stream.fileno())
     temporary.replace(path)
 
 
@@ -411,7 +421,7 @@ def finish_evidence(binding, packages, serial, appid, attempt_id, collection_dir
 CACHE_ROOT = artifacts.CACHE_ROOT
 RUNTIME_CLASS = "com.tencent.mm.plugin.appbrand.AppBrandRuntime"
 APPID_RE = re.compile(r"wx[0-9a-f]{16}")
-METADATA_FIELDS = ("appid", "name", "developer", "username", "description", "icon_url", "app_version")
+METADATA_FIELDS = ("appid", "name", "developer", "username", "description", "category", "icon_url", "app_version")
 _select_binding = select_binding
 
 
@@ -448,13 +458,9 @@ def select_opened_binding(messages, attempt_id):
     appid = next(iter(next(iter(active.values()))))
     binding = _select_binding(messages, appid, attempt_id)
     binding["appid"] = appid
-    binding["public_metadata"] = [
-        m for m in messages if m.get("kind") == "runtime-public-metadata"
-        and m.get("appid") == appid and m.get("attempt_id") == attempt_id
-        and m.get("process_id") == binding["runtime"]["process_id"]
-        and m.get("metadata_class") == "com.tencent.mm.plugin.appbrand.config.WxaAttributes"
-        and m.get("identity_field", {}).get("field") == "field_appId"
-        and m.get("identity_field", {}).get("value") == appid]
+    binding["public_metadata"] = public_metadata.select_records(
+        messages, appid, attempt_id, binding["runtime"]["process_id"])
+    binding["public_metadata_schema"] = binding["runtime"].get("metadata_schema")
     binding["metadata"] = runtime_metadata(binding)
     return binding
 
@@ -476,6 +482,12 @@ def runtime_metadata(binding):
             text = value.get("value")
             if isinstance(text, str) and text.strip() and len(text) <= 4096:
                 values.setdefault(aliases[name], set()).add(text)
+    if binding.get("public_metadata_schema") == public_metadata.SCHEMA:
+        result, report = public_metadata.decode_records(binding.get("public_metadata", []), values)
+        binding["public_metadata_status"] = report
+        result.update(appid=binding["appid"], app_version=binding["main"]["version"])
+        return result
+    # Preserve the original projection when replaying historical acquisitions.
     result = {key: next(iter(items)) for key, items in values.items() if len(items) == 1}
     cached = {}
     allowed = {"name": "field_nickname", "username": "field_username",
@@ -502,7 +514,7 @@ def binding_signature(binding):
 
 
 def resolve_frida(value=""):
-    candidates = [value] if value else ["frida", str(Path(__file__).parent / "MiniCrawler/.venv-frida/bin/frida")]
+    candidates = [value] if value else ["frida"]
     for candidate in candidates:
         found = shutil.which(candidate)
         if found:
@@ -521,8 +533,7 @@ class RuntimeProbe:
         directory.mkdir(parents=True, exist_ok=False)
         source = Path(__file__).with_name("opened_app_probe.js").read_text(encoding="utf-8")
         script = directory / "probe.js"
-        script.write_text("globalThis.PROBE_ATTEMPT_ID = " + json.dumps(attempt_id) + ";\n" + source,
-                          encoding="utf-8")
+        write_text(script, "globalThis.PROBE_ATTEMPT_ID = " + json.dumps(attempt_id) + ";\n" + source)
         if pid is None:
             process = subprocess.run(
                 [self.adb, "-s", self.serial, "shell", "pidof", "com.tencent.mm:appbrand"]
@@ -541,18 +552,71 @@ class RuntimeProbe:
                      "--no-auto-reload", "-t", "12", "-l", str(script)],
                     capture_output=True, text=True, timeout=25)
                 output = process.stdout + "\n" + process.stderr
-                (directory / (str(process_id) + ".log")).write_text(output, encoding="utf-8")
+                write_text(directory / (str(process_id) + ".log"), output)
                 records = read_messages(output)
                 if process.returncode or not any(r.get("kind") == "metadata-probe-complete" for r in records):
                     failures.append(process_id)
                 else:
                     messages.extend(records)
-            except subprocess.TimeoutExpired:
+            except subprocess.TimeoutExpired as error:
+                def decoded(value):
+                    return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
+                write_text(directory / (str(process_id) + ".log"),
+                           decoded(error.stdout) + "\n" + decoded(error.stderr))
                 failures.append(process_id)
         write_json(directory / "messages.json", messages)
         if failures:
             raise EvidenceError("Runtime observation incomplete for processes: " + str(failures))
+        try:
+            binding = select_opened_binding(messages, attempt_id)
+        except EvidenceError:
+            return messages  # The caller reports the original identity failure.
+        if binding.get("public_metadata_status", {}).get("missing_fields"):
+            messages.extend(self.cached_metadata(binding, attempt_id, directory))
+            write_json(directory / "messages.json", messages)
         return messages
+
+    def cached_metadata(self, binding, attempt_id, directory):
+        """Read public cache in an already-running WeChat main process only.
+
+        The focused runtime supplies the identity. This optional observation
+        cannot replace its AppID, version or package bindings.
+        """
+        context = {"appid": binding["appid"], "attempt_id": attempt_id,
+                   "runtime_process_id": binding["runtime"]["process_id"]}
+        unavailable = dict(context, kind="metadata-main-cache-unavailable")
+        try:
+            process = subprocess.run([self.adb, "-s", self.serial, "shell", "pidof", "com.tencent.mm"],
+                                     capture_output=True, text=True, timeout=15)
+            pids = {int(value) for value in process.stdout.split() if value.isdigit() and int(value) > 0}
+            if process.returncode or len(pids) != 1:
+                return [dict(unavailable, reason="Existing WeChat main PID unavailable or ambiguous")]
+            pid = pids.pop()
+            source = Path(__file__).with_name("cached_public_metadata_probe.js").read_text(encoding="utf-8")
+            script = directory / "cached_public_metadata_probe.js"
+            write_text(script, "globalThis.CACHED_METADATA_CONTEXT = " + json.dumps(context) + ";\n" + source)
+            process = subprocess.run([self.frida, "-D", self.serial, "-p", str(pid), "-q",
+                "--no-auto-reload", "-t", "12", "-l", str(script)],
+                capture_output=True, text=True, timeout=25)
+            output = process.stdout + "\n" + process.stderr
+            write_text(directory / ("main-metadata-" + str(pid) + ".log"), output)
+            records = read_messages(output)
+            if process.returncode or not any(r.get("kind") == "metadata-probe-complete" for r in records):
+                return [dict(unavailable, reason="Public cache observation incomplete")]
+            # Check the real process PID, declared process name, runtime context
+            # and completed table query again during offline replay.
+            return [record for record in records if record.get("process_id") == pid
+                    and record.get("metadata_source") == "wechat_main_cache"
+                    and record.get("runtime_process_id") == context["runtime_process_id"]
+                    and record.get("appid") == context["appid"]
+                    and record.get("attempt_id") == attempt_id]
+        except subprocess.TimeoutExpired as error:
+            def decoded(value):
+                return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value or ""
+            write_text(directory / "main-metadata-timeout.log", decoded(error.stdout) + "\n" + decoded(error.stderr))
+            return [dict(unavailable, reason="Public cache observation timed out")]
+        except subprocess.SubprocessError as error:
+            return [dict(unavailable, reason=type(error).__name__)]
 
 
 PIPELINE_SCHEMA = "minizoo_acquisition_v1"
@@ -585,8 +649,14 @@ def collect_runtime(probe, attempt_id, collection_dir, *, expected_appid=None,
     if (binding_signature(binding) != binding_signature(final)
             or _inventory_signature(binding) != _inventory_signature(final)):
         raise EvidenceError("Focused app, release or module inventory changed during acquisition")
+    metadata = binding["metadata"]
+    if binding.get("public_metadata_schema") == public_metadata.SCHEMA:
+        if final.get("public_metadata_schema") != public_metadata.SCHEMA:
+            raise EvidenceError("Public metadata probe schema changed during acquisition")
+        metadata, report = public_metadata.combine(binding, final)
+        evidence["public_metadata_status"] = report
     evidence.update(collection_schema=PIPELINE_SCHEMA, acquisition_policy="all_available_components",
-                    device=probe.serial, observed_metadata=binding["metadata"], observations={})
+                    device=probe.serial, observed_metadata=metadata, observations={})
     evidence["metadata_sources"] = [
         {"path": str(path), "sha256": artifacts.sha256_file(path)}
         for path in sorted((observations / "before").glob("*.log"))]
@@ -622,6 +692,16 @@ def verify_observations(evidence, evidence_path, packages):
             raise EvidenceError("Runtime observation checksum mismatch")
         bindings.append(select_opened_binding(json.loads(path.read_text()), evidence["attempt_id"]))
     first, last = bindings
+    metadata = first["metadata"]
+    if first.get("public_metadata_schema") == public_metadata.SCHEMA:
+        if last.get("public_metadata_schema") != public_metadata.SCHEMA:
+            raise EvidenceError("Public metadata probe schema changed during acquisition")
+        metadata, report = public_metadata.combine(first, last)
+        if evidence.get("public_metadata_status") != report:
+            raise EvidenceError("Public metadata status differs from saved observations")
+        first = dict(first, metadata=metadata, public_metadata_status=report)
+    elif "public_metadata_status" in evidence:
+        raise EvidenceError("Public metadata status lacks versioned observations")
     if (binding_signature(first) != binding_signature(last)
             or _inventory_signature(first) != _inventory_signature(last)
             or first["appid"] != evidence.get("appid")

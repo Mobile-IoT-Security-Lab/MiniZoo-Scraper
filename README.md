@@ -1,119 +1,118 @@
 # MiniZoo Scraper
 
-![Mini-app discovery, initial collection, consolidation and version revisit workflow](docs/images/mini-app-workflow.png)
+![Mini-app discovery, collection and version workflow](docs/images/mini-app-workflow.png)
 
 Collect WeChat Mini Programs and their original `.wxapkg` packages into
-`collection_results/` inside this project. The public release contains local
-collection and verification tools only. It has no Google Drive uploader, cloud
-publication command, cloud credentials or rclone dependency.
+`collection_results/` inside this project. Each module runs independently.
+The public release saves locally and contains no Google Drive uploader.
 
-| Module | Purpose | Guide |
-| --- | --- | --- |
-| Discovery | Search keywords, record AppIDs and public metadata, checkpoint the query queue. | [Docker and discovery](docs/DOCKER.md) |
-| Initial collection | Open catalogue entries through ADB and Frida; retain packages and runtime evidence. | [Initial collector](scraper/README.md) |
-| Version collection | Revisit known AppIDs through Appium, compare versions and update a working CSV. | [Version collector](version_scraper/README.md) |
+## Try it without a phone
 
-Both collectors use [MiniZooCollectionCore](MiniZooCollectionCore/README.md) for
-package selection, identity checks, metadata extraction and reconstruction.
-Discovery is optional when a catalogue already exists. Use a separate phone and
-state directory for each simultaneous role. Mini Program packages run inside
-WeChat; they are not Android APKs.
-
-## Requirements and setup
-
-Use Python 3.12, Android Platform Tools, rooted Android phones with WeChat
-installed and logged in, and matching Frida client/server versions. Initial
-collection uses ADBKeyboard; version navigation uses Appium. Native macOS OCR
-uses Apple Vision; the Linux container uses Tesseract.
-
-For Docker, follow the [Docker guide](docs/DOCKER.md). Default commands print
-help and do not start collection:
+From the repository root, with Python 3.12:
 
 ```sh
-docker compose build
-docker run --rm --network none minizoo-scraper:public
+python3.12 minizoo.py --help
+python3.12 minizoo.py test
 ```
 
-For native setup, follow the [initial](scraper/README.md#installation) or
-[version](version_scraper/README.md#installation) collector guide. Initialize
-only the external components needed by the selected workflow:
+The Python tests use the standard library, synthetic files and mocked phones.
+You do not need Frida, Appium, Docker, credentials or a dataset. Tests requiring
+Node.js, OCR or optional upstream dependencies report explicit skips. Nothing
+starts collecting when the launcher or a module is invoked without arguments.
+
+## Independent modules
+
+Run every command below from the repository root. Append `--help` to see the
+selected module's complete options.
+
+| Module | Start | Test without a phone | Guide |
+| --- | --- | --- | --- |
+| Discovery | `python3 minizoo.py discovery` | `python3 minizoo.py test discovery` | [Discovery](discovery/README.md) |
+| Initial collection | `python3 minizoo.py collection` | `python3 minizoo.py test collection` | [Initial collector](scraper/README.md) |
+| Version collection | `python3 minizoo.py version` | `python3 minizoo.py test version` | [Version collector](version_scraper/README.md) |
+| Package inspection, reconstruction and metadata | `python3 minizoo.py inspect`, `decompile`, `metadata` | `python3 minizoo.py test core` | [Shared core](MiniZooCollectionCore/README.md) |
+
+`python3 minizoo.py test cli` checks independent command startup, private config
+generation, input preservation and error propagation. GitHub Actions runs each
+suite separately on Linux and macOS. [Testing details](docs/TESTING.md) distinguish
+unit tests, optional dependency checks and bounded tests on a real phone.
+
+Discovery is optional if you already have a catalogue. Initial collection does
+not need the version collector or Appium. Version collection does not start
+discovery or the initial collector. Offline inspection needs only a saved package.
+The collectors share one implementation of identity checks, package acquisition,
+metadata extraction and reconstruction; navigation and queues remain independent.
+
+## Install only what you use
+
+For live work, create one environment at the repository root:
 
 ```sh
-# Reconstruction for either collector:
+python3.12 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
+```
+
+Live modules require Android Platform Tools, an authorized rooted Android phone
+with WeChat logged in, and matching Frida client/server versions. Follow the
+module guide for its specific prerequisites: the discovery adapter, ADBKeyboard,
+or Appium and OCR. Use a separate phone and state directory for simultaneous roles.
+
+For reconstruction in either collector, install Node.js 26+ and the pinned tool:
+
+```sh
 git submodule update --init version_scraper/vendor/wxappUnpacker
-# Optional keyword discovery:
-git submodule update --init scraper/MiniCrawler
+npm ci --prefix version_scraper/vendor/wxappUnpacker --ignore-scripts --no-audit --no-fund
 ```
 
-For source archives without Git metadata, clone the dependencies into those
-same directories and check out the exact revisions in
-[PROVENANCE.md](docs/PROVENANCE.md). Dependency installation does not configure
-phones or start a collection.
+Discovery installs its own external adapter separately. Source ZIP downloads do
+not contain submodules; use the revisions in [provenance](docs/PROVENANCE.md).
+For a container installation, follow [Docker](docs/DOCKER.md).
 
-## Local output
-
-Defaults for native commands and Docker Compose use this layout:
+## Project layout and local results
 
 ```text
-MiniZooScraper/
-  collection_results/                 # Ignored by Git and Docker builds
-    discovery/                        # Query database and discovered catalogue
-    initial/                          # Initial runs and their evidence
-      active_runs/                    # Optional multi-device supervisor runs
-      all_mini_apps/                  # Locally consolidated packages and CSVs
-    automation/                       # Supervisor locks, logs and retry state
-    version/
-      apps.csv                        # Working baseline; input stays untouched
-      output/
-        collections/<appid>/<attempt>/
-        checkpoints/
-        reports/
-        state.sqlite3
+minizoo.py                      # Common launcher and per-module test runner
+discovery/                      # Discovery, its tests and optional adapter
+scraper/                        # Initial collection; optional batch automation
+version_scraper/                # Version collection, adapters and tests
+MiniZooCollectionCore/           # Shared engine and its own tests
+tests/                          # Launcher/configuration tests
+tools/                          # Private version-config generator
+docker/                         # Container entry point and smoke checks
+private/                        # Your configs and inputs; ignored by Git
+collection_results/             # All default outputs; ignored by Git
+  discovery/                    # SQLite query queue and catalog.csv
+  initial/                      # Runs, evidence and optional consolidation
+  version/                      # Working CSV, packages, SQLite and checkpoints
+  automation/                   # Optional initial-collector supervisor state
 ```
 
-Each acquisition retains original packages, available metadata, runtime evidence
-and reconstruction results. Failed or partial acquisitions remain local for
-inspection. Reports contain local file paths and integrity checks. Stopping a
-collector or removing a container does not delete its acquired files.
+Inputs, configurations, acquired packages, device identifiers, screenshots and
+logs stay outside the tracked source. Do not force-add them. The bundled example
+CSV is synthetic. Check staged files before any public commit.
 
-Copy the example configurations before editing device serials and input paths.
-Version-collector relative paths resolve from the configuration file's folder,
-so its default `config.json` belongs beside `config.example.json`. Docker Compose
-binds the host project's `collection_results/` to `/data` in the container.
-Explicit output overrides are supported; use separate directories for independent
-runs and preserve checkpoint paths when resuming.
+Configuration generation never overwrites an existing file. Version paths are
+resolved from the config file's folder; explicit CLI paths keep the caller's
+working directory. Preserve existing output paths when resuming saved evidence.
+A module does not automatically launch another module or schedule later runs.
 
-Real catalogues, device/account identifiers, screenshots, logs and configuration
-are private data. Keep them under ignored `collection_results/` or `private/`.
-Only the example CSV is synthetic. `.gitignore` cannot protect an already tracked
-file or a forced add: inspect staged files and commit author emails before a
-public commit. Use a GitHub noreply email where required. Local results are not
-anonymized merely because they are excluded from Git.
+## Evidence and metadata
 
-## Evidence and validation
+Runtime identity and checksums must corroborate package ownership. Multiple hashes
+do not by themselves prove multiple versions. A version baseline advances only
+after identity, version, complete coverage and artifact checks pass.
 
-Runtime observations must corroborate package ownership. Search labels, static
-AppID references and hashes alone do not establish ownership or release versions.
-A version baseline advances only after identity, version, complete coverage and
-artifact checks pass. Missing components and reconstruction failures remain
-explicit; valid original bytes are retained. See the
-[shared-core policy](MiniZooCollectionCore/README.md).
-
-Run the offline suites separately:
-
-```sh
-(cd scraper && python3.12 -B -m unittest discover -s . -p 'test_*.py')
-(cd version_scraper && python3.12 -B -m unittest discover -s tests)
-python3.12 -B -m unittest discover -s docker -p 'test_*.py'
-```
-
-Tests use synthetic fixtures and mocked devices. Integration tests require the
-pinned decompiler, OCR dependencies or discovery adapter; missing prerequisites
-are reported as skips. A live acquisition is a separate check on an idle phone.
+Public metadata is saved before decompilation. Missing values remain explicit;
+search keywords are not categories and export times are not acquisition times.
+Static app declarations are a separate, provenance-checked fallback. Partial
+acquisitions and reconstruction failures preserve valid original bytes. See the
+[core policy](MiniZooCollectionCore/README.md#recovering-missing-metadata) and
+[interrupted-run recovery](scraper/README.md#recovering-an-interrupted-run).
 
 ## License and citation
 
 Project-authored code uses the [MIT License](LICENSE). External components and
-Mini Program packages retain their own rights; see [provenance](docs/PROVENANCE.md).
+mini-app packages retain their own rights; see [provenance](docs/PROVENANCE.md).
 Author credit is in [CITATION.cff](CITATION.cff). The associated preprint is in
-preparation; no arXiv identifier has been assigned here.
+preparation; no arXiv identifier is assigned here.

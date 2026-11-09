@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from tools import decompile_wxapkg as wrapper
+from minizoo_collection.tools import decompile_wxapkg as wrapper
 
 
 def wxapkg(entries):

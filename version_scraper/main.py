@@ -183,6 +183,16 @@ def finish_local(config, store, manifest_path):
         if any(evidence[key] != manifest.get(key) for key in checked_keys):
             raise artifacts.ArtifactError("Runtime evidence or metadata changed after verification")
     manifest.update(evidence, identity_verified=True)
+    # Public metadata is a separate outcome from static parsing/decompilation.
+    # Save its replay-validated observations before any optional processing.
+    status = evidence.get("public_metadata_status")
+    if isinstance(status, dict):
+        manifest["public_metadata_collection"] = dict(status,
+            appid=manifest["appid"], attempt_id=manifest["attempt_id"],
+            evidence_sha256=evidence["evidence_sha256"],
+            observed_at=evidence.get("runtime_binding", {}).get("runtime_observed_at"),
+            retry_required=bool(status.get("missing_fields")),
+            retry_method="bounded_cache_read_then_next_verified_acquisition")
     if stage not in ("decompiled", "local_done"):
         # This checkpoint distinguishes decompiler failure from uncertain identity.
         manifest["stage"] = "verified"
@@ -191,7 +201,7 @@ def finish_local(config, store, manifest_path):
             root, evidence["packages"], appid=manifest["appid"], attempt_id=manifest["attempt_id"],
             coverage=evidence["coverage"], decompiler_command=config["decompiler_command"],
             context={"collector": "versions", "observed_version": evidence.get("version"),
-                     "device": manifest.get("device"), "observed_at": evidence.get("runtime_observed_at")})
+                     "device": manifest.get("device"), "observed_at": evidence.get("runtime_binding", {}).get("runtime_observed_at")})
         manifest.update({key: processed[key] for key in
                          ("package_acquisition_status", "metadata_status", "decompilation_status")})
         manifest.update(processing_path=str(root / "processing.json"),
@@ -710,6 +720,9 @@ class Runner:
                     "attempt_id": manifest["attempt_id"], "output": path.parent / "evidence.json",
                     "packages_json": package_list, "collection_dir": path.parent}, path.parent / "logs" / "evidence.log")
                 manifest["packages"] = read_package_list(package_list)
+                # Actual package-copy completion, before parsing, rather than
+                # the search start or a later upload/decompilation timestamp.
+                manifest["captured_at"] = now()
                 write_json(path, manifest)
                 return self.local(task, path)
             except RateLimit as error:

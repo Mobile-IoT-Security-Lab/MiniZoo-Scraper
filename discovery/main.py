@@ -21,6 +21,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from metadata import explicitly_empty, item_record, save_records
+
 SOURCE_COMMIT = "5cd8dff0ea25f8bd52f4898954b8bd8d76ef6958"
 SOURCE_HASHES = {
     "pixel_crawler.py": "6b452905ddd1b264eba7dfa383f0509e40668e63abffd5e4a502e6c37e4e6145",
@@ -64,6 +66,7 @@ def initialize(path, source, queries):
     crawler, batch = load_source(source)
     path.parent.mkdir(parents=True, exist_ok=True)
     db = crawler.connect_db(path)
+    db.execute("PRAGMA synchronous=FULL")
     batch.ensure_queue(db)
     db.executescript("""
       CREATE TABLE IF NOT EXISTS discovery_cursor(query TEXT PRIMARY KEY, cursor TEXT NOT NULL);
@@ -118,16 +121,16 @@ def apply_page(db, crawler, batch, query, cursor, response, max_pages):
                 json.dumps(response, ensure_ascii=False)))
     db.commit()
     body = inspect_response(response)
-    records = [crawler.item_record(item, query) for item in crawler.iter_items(body)]
-    records = [row for row in records if APPID.fullmatch(row["appid"]) and row["name"]]
-    if body["data"] and not records:
+    records = [item_record(item, query, crawler.item_record) for item in crawler.iter_items(body)]
+    records = [row for row in records if row is not None]
+    if not records and not explicitly_empty(body):
         raise RuntimeError("Nonempty search data contains no valid Mini Program records; inspect the saved response")
     continuation = int(body.get("continueFlag") or 0)
     offset = int(body.get("offset") or 0)
     seen = cursor["seen_offsets"] + [cursor["offset"]]
     if continuation and (not records or offset <= cursor["offset"] or offset in seen):
         raise RuntimeError("Search continuation did not advance; current page cursor retained")
-    crawler.save_records(db, records, query, cursor["offset"], continuation)
+    save_records(db, records, query, cursor["offset"], continuation)
     # Enqueue and cursor completion share a transaction, after the idempotent AppID upsert.
     db.executemany("INSERT OR IGNORE INTO query_queue(query,discovered_from) VALUES (?,?)",
                    ((q, query) for q in batch.discovered_queries(records) if 1 <= len(q) <= 32))
@@ -194,6 +197,8 @@ def export(db, directory):
         writer = csv.writer(stream)
         writer.writerow(columns)
         writer.writerows(db.execute("SELECT " + ",".join(columns) + " FROM miniapps ORDER BY appid"))
+        stream.flush()
+        os.fsync(stream.fileno())
     temporary.replace(path)
 
 
@@ -218,6 +223,7 @@ def delay(seconds):
 def run(db, args):
     global STOPPING
     STOPPING = False
+    db.execute("PRAGMA synchronous=FULL")
     if state(db, "paused"):
         raise Pause(f"Discovery is paused: {state(db, 'paused')}. Use resume after checking the phone.")
     if state(db, "serial") not in (None, args.serial):
@@ -267,7 +273,7 @@ def exclusive(database):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", type=Path, default=Path(os.environ.get("MINICRAWLER_SOURCE", str(Path(__file__).resolve().parents[1] / "scraper" / "MiniCrawler"))))
+    parser.add_argument("--source", type=Path, default=Path(os.environ.get("MINICRAWLER_SOURCE", str(Path(__file__).resolve().parents[1] / "discovery" / "vendor" / "MiniCrawler"))))
     parser.add_argument("--database", type=Path, default=Path(os.environ.get("MINIZOO_DATA_DIR", str(Path(__file__).resolve().parents[1] / "collection_results"))) / "discovery" / "data.db")
     commands = parser.add_subparsers(dest="command", required=True)
     init = commands.add_parser("init", help="Seed a persistent queue without contacting a phone")

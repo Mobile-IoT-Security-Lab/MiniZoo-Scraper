@@ -1,5 +1,5 @@
 [submodule "scraper/MiniCrawler"]
-	path = scraper/MiniCrawler
+	path = discovery/vendor/MiniCrawler
 	url = https://github.com/luca959/MiniCrawler.git
 [submodule "version_scraper/vendor/wxappUnpacker"]
 	path = version_scraper/vendor/wxappUnpacker

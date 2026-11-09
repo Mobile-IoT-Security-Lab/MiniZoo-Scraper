@@ -12,7 +12,7 @@ from pathlib import Path
 import sys
 import uuid
 
-from . import artifacts, static_reader
+from . import artifacts, decompiled_metadata, static_reader
 
 SCHEMA = "minizoo_processing_v1"
 
@@ -105,7 +105,8 @@ def process_acquisition(collection_dir, packages, *, appid, attempt_id,
               "metadata_status": "completed", "metadata_path": str(metadata_path),
               "metadata_sha256": artifacts.sha256_file(metadata_path),
               "metadata_csv": str(csv_path), "context": context or {},
-              "decompilation_status": "pending", "decompiled": []}
+              "decompilation_status": "pending", "decompiled": [],
+              "decompiled_metadata_status": "not_available"}
     atomic_json(root / "processing.json", report)
     try:
         report["decompiled"] = artifacts.decompile(packages, root, appid, command)
@@ -113,6 +114,24 @@ def process_acquisition(collection_dir, packages, *, appid, attempt_id,
     except (artifacts.ArtifactError, OSError, ValueError) as error:
         report["decompilation_status"] = "failed"
         report["decompilation_error"] = str(error)
+    if report["decompilation_status"] == "verified":
+        try:
+            # A separate immutable snapshot avoids a circular hash: the final
+            # processing report points to metadata that pins this earlier view.
+            run_id = uuid.uuid4().hex
+            source = root / ("processing-decompiled-" + run_id + ".json")
+            artifacts._immutable(source, json.dumps(report, ensure_ascii=False, indent=2).encode())
+            result = decompiled_metadata.write_report(
+                source, root / "metadata" / ("decompiled-" + run_id + ".json"),
+                expected_appid=appid, expected_attempt_id=attempt_id)
+            report["decompiled_metadata_status"] = result["report"]["status"]
+            report["decompiled_metadata_path"] = result["path"]
+            report["decompiled_metadata_sha256"] = result["sha256"]
+        except (artifacts.ArtifactError, OSError, ValueError) as error:
+            # Optional fallback failure must not revoke captured bytes, live
+            # metadata, or successful decompilation.
+            report["decompiled_metadata_status"] = "failed"
+            report["decompiled_metadata_error"] = str(error)
     for package in packages:
         if artifacts.sha256_file(package["local_path"]) != package["sha256"]:
             report["package_acquisition_status"] = "integrity_failed"

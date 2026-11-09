@@ -8,7 +8,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOL = Path(os.environ.get("WXAPP_TOOL_ROOT", str(ROOT / "vendor" / "wxappUnpacker")))
+TOOL = Path(os.environ.get("WXAPP_TOOL_ROOT", str(ROOT.parent / "version_scraper" / "vendor" / "wxappUnpacker")))
 
 
 @unittest.skipUnless(shutil.which("node") and (TOOL / "node_modules/esprima").is_dir(),
@@ -17,7 +17,7 @@ class CompatibilityTest(unittest.TestCase):
     def run_node(self, script, directory, success=True):
         env = dict(os.environ, WXAPP_TOOL_ROOT=str(TOOL),
                    WXAPP_COMPAT_AUDIT=str(Path(directory) / "expected.jsonl"))
-        result = subprocess.run(["node", "-e", script, str(ROOT / "tools/decompiler_compat.cjs")],
+        result = subprocess.run(["node", "-e", script, str(ROOT / "minizoo_collection/tools/decompiler_compat.cjs")],
                                 cwd=directory, env=env, text=True, capture_output=True, timeout=20)
         if success:
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

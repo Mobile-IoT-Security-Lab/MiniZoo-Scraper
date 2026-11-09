@@ -205,10 +205,11 @@ def validate_evidence(evidence_path, expected_appid, packages, attempt_id):
         raise ArtifactError("Runtime package evidence is missing or invalid") from exc
     if not isinstance(evidence, dict):
         raise ArtifactError("Runtime evidence must be an object")
+    replayed = None
     if evidence.get("collection_schema") == "minizoo_acquisition_v1":
         from .runtime import verify_observations, EvidenceError
         try:
-            verify_observations(evidence, evidence_path, packages)
+            replayed = verify_observations(evidence, evidence_path, packages)
         except (EvidenceError, OSError, ValueError, KeyError) as error:
             raise ArtifactError("Runtime observations failed replay: " + str(error)) from error
     if evidence.get("acquisition_kind") == "component_recovery" or "component_recovery" in evidence:
@@ -287,7 +288,13 @@ def validate_evidence(evidence_path, expected_appid, packages, attempt_id):
             raise ArtifactError("Release version kind or runtime source is unverified")
     else:
         version, kind, version_source = None, None, None
+    public_fields = {}
+    if replayed is not None:
+        public_fields["observed_metadata"] = replayed["metadata"]
+        if "public_metadata_status" in replayed:
+            public_fields["public_metadata_status"] = replayed["public_metadata_status"]
     return {"appid": expected_appid, "attempt_id": attempt_id, "version": version,
+            **public_fields,
             "version_kind": kind, "source": evidence["source"],
             "version_source": version_source, "coverage": coverage,
             "coverage_limits": limits, "packages": checked,

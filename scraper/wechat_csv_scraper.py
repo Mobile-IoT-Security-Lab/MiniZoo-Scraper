@@ -21,7 +21,9 @@ Important:
 
 import argparse
 import csv
+from contextlib import contextmanager
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import os
@@ -34,12 +36,13 @@ import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
-from wxapkg_metadata_csv import append_collected_package_metadata
+from wxapkg_metadata_csv import append_collected_package_metadata, EXTRA_FIELDS
 from opened_app_identity import (
     SCHEMA, METADATA_FIELDS, EvidenceError, PackageUnavailable, RuntimeProbe,
-    collect_opened_app, load_verified_receipt, resolve_frida,
+    collect_opened_app, load_verified_receipt, resolve_frida, sync_directory,
 )
 from minizoo_collection.processing import process_acquisition
+from minizoo_collection.artifacts import _immutable
 
 ROOT = Path(__file__).resolve().parent
 REMOTE_TMP_ROOT = "/sdcard/wechat_miniapp_collection"
@@ -245,6 +248,9 @@ def apply_opened_collection(rec, evidence, receipt, run_dir):
     rec.update({key: receipt["metadata"].get(key, "") for key in METADATA_FIELDS})
     rec["csv_id"] = receipt["appid"]
     rec["metadata_verified_at"] = receipt["observed_at"] or ""
+    # Capture time belongs to this immutable receipt, before static processing.
+    # Legacy receipts without a recorded capture time do not acquire today's date.
+    rec["collected_at"] = receipt.get("collection_time") or rec.get("collected_at", "")
     rec["local_files"] = ";".join(str((evidence.parent / p["local_file"]).relative_to(run_dir))
                                 for p in receipt["packages"])
     rec["sha256"] = ";".join(p["sha256"] for p in receipt["packages"])
@@ -287,17 +293,26 @@ def append_package_history(history_path, rec, run_dir, source_run=None, collecte
     if rec.get("package_attribution") == "runtime_verified":
         receipt, _ = load_verified_receipt(rec, run_dir)
         rec.update({key: receipt["metadata"].get(key, "") for key in METADATA_FIELDS})
+        collected_at = receipt.get("collection_time") or collected_at or rec.get("collected_at")
     else:
         for key in ("appid", "name", "developer", "username", "app_version",
                     "description", "icon_url", "category", "rating", "url", "doc_id"):
             rec[key] = ""
         rec["selection_mode"] = "context_candidate_unassigned"
-    collected_at = collected_at or rec.get("collected_at") or iso_now()
+    collected_at = collected_at or rec.get("collected_at") or ""
     manifest_sha256 = split_field(rec.get("sha256"))
     manifest_md5 = split_field(rec.get("md5"))
     remote_sources = split_field(rec.get("remote_sources"))
     fields = package_history_fields()
     exists = Path(history_path).exists()
+    seen = set()
+    if exists:
+        with Path(history_path).open(newline="", encoding="utf-8") as stream:
+            previous = csv.DictReader(stream)
+            if previous.fieldnames != fields:
+                raise ValueError("package_history_schema_mismatch")
+            seen = {(r.get("attempt_id"), r.get("package_sha256"), r.get("remote_source"))
+                    for r in previous if r.get("attempt_id")}
     written = 0
     Path(history_path).parent.mkdir(parents=True, exist_ok=True)
     with open(history_path, "a", newline="", encoding="utf-8") as destination:
@@ -308,6 +323,10 @@ def append_package_history(history_path, rec, run_dir, source_run=None, collecte
             package_path = Path(run_dir) / relative
             actual_sha256 = sha256(package_path) if package_path.is_file() else ""
             actual_md5 = md5(package_path) if package_path.is_file() else ""
+            key = (rec.get("attempt_id"), actual_sha256,
+                   remote_sources[index] if index < len(remote_sources) else "")
+            if rec.get("attempt_id") and key in seen:
+                continue
             expected_sha256 = manifest_sha256[index] if index < len(manifest_sha256) else ""
             expected_md5 = manifest_md5[index] if index < len(manifest_md5) else ""
             if not expected_sha256 and not expected_md5:
@@ -349,8 +368,206 @@ def append_package_history(history_path, rec, run_dir, source_run=None, collecte
                     "package_attribution", "identity_status",
                     "runtime_evidence_path", "runtime_evidence_sha256")},
             })
+            durable_flush(destination)
+            seen.add(key)
             written += 1
+        durable_flush(destination)
+    sync_directory(Path(history_path).parent)
     return written
+
+
+def durable_flush(stream):
+    stream.flush()
+    os.fsync(stream.fileno())
+
+
+def save_attempt_record(run_dir, rec):
+    """Checkpoint context and verified metadata independently of CSV/decompilation."""
+    path = Path(run_dir) / "attempt_records" / (rec["attempt_id"] + ".json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+    try:
+        with temporary.open("x", encoding="utf-8") as stream:
+            json.dump(rec, stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+            durable_flush(stream)
+        temporary.replace(path)
+        sync_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+@contextmanager
+def output_lock(run_dir):
+    """The writer and offline recovery share a lock separate from CSV inodes."""
+    path = Path(run_dir) / ".collection.lock"
+    with path.open("a") as stream:
+        try:
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise RuntimeError("Collection output is active; stop its writer before recovery") from error
+        try:
+            yield
+        finally:
+            fcntl.flock(stream, fcntl.LOCK_UN)
+
+
+def replace_csv_preserving_original(path, fields, rows):
+    path = Path(path)
+    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+    try:
+        with temporary.open("x", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(stream, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(rows)
+            durable_flush(stream)
+        if path.exists():
+            original = path.read_bytes()
+            if original == temporary.read_bytes():
+                return
+            backup = path.with_name(path.stem + ".before_recovery." + hashlib.sha256(original).hexdigest() + ".csv")
+            _immutable(backup, original)
+            sync_directory(path.parent)
+        temporary.replace(path)
+        sync_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def repair_append_csv(path, fields, *, metadata=False):
+    """Retain complete rows and preserve malformed append tails before replay."""
+    if not path.exists():
+        return []
+    rows, damaged = [], []
+    with path.open(newline="", encoding="utf-8") as stream:
+        reader = csv.DictReader(stream, strict=True)
+        if reader.fieldnames != fields:
+            raise ValueError("Recovery refused unexpected CSV schema: " + str(path))
+        try:
+            for row in reader:
+                valid = None not in row and all(value is not None for value in row.values())
+                if valid and metadata:
+                    try:
+                        valid = isinstance(json.loads(row["query_record_json"]), dict)
+                    except (ValueError, TypeError):
+                        valid = False
+                (rows if valid else damaged).append(row)
+        except csv.Error:
+            damaged.append({})
+    if damaged:
+        replace_csv_preserving_original(path, fields, rows)
+    return damaged
+
+
+def record_attempt_error(rec, error, opened, app_dir, run_dir):
+    """Processing failures cannot revoke an intact, already verified capture."""
+    if rec.get("package_attribution") == "runtime_verified":
+        load_verified_receipt(rec, run_dir)
+        rec.update(status="ok", metadata_status="error", decompilation_status="error",
+                   error="Post-acquisition processing failed: " + str(error))
+        return
+    rec["status"] = ("opened_but_no_package" if isinstance(error, PackageUnavailable) else
+                     "opened_identity_unverified" if opened and isinstance(error, EvidenceError) else "error")
+    rec["identity_status"] = "unverified" if opened else "not_observed"
+    rec["error"] = str(error)
+    retained = sorted(p for p in (Path(app_dir) / "packages").glob("*.wxapkg")
+                      if p.is_file() and not p.is_symlink())
+    rec["local_files"] = ";".join(str(p.relative_to(run_dir)) for p in retained)
+    rec.update(package_file_metadata(retained))
+    if retained:
+        rec["collected_at"] = rec.get("collected_at") or iso_now()
+
+
+def recover_output(run_dir):
+    run_dir = Path(run_dir).expanduser().resolve(strict=True)
+    with output_lock(run_dir):
+        return _recover_output(run_dir)
+
+
+def _recover_output(run_dir):
+    """Offline, idempotent CSV recovery from complete, replay-verified receipts.
+
+    The previous manifest is retained by content hash before replacement. No
+    device, navigation, current timestamp or decompiler is used for recovery.
+    """
+    run_dir = Path(run_dir).expanduser().resolve(strict=True)
+    manifest = run_dir / "manifest.csv"
+    fields = manifest_fields()
+    rows, positions, damaged = [], {}, []
+    if manifest.exists():
+        with manifest.open(newline="", encoding="utf-8") as stream:
+            reader = csv.DictReader(stream, strict=True)
+            if reader.fieldnames != fields:
+                raise ValueError("manifest_schema_mismatch")
+            try:
+                rows = list(reader)
+            except csv.Error as error:
+                raise ValueError("Malformed manifest retained; inspect interrupted quoted row") from error
+        damaged = [row for row in rows if None in row or any(value is None for value in row.values())]
+        rows = [row for row in rows if row not in damaged]
+        positions = {row["attempt_id"]: index for index, row in enumerate(rows)}
+    recovered, errors, damaged_appends = [], [], []
+    append_files_checked = False
+    for path in sorted((run_dir / "attempts").glob("*/opened_app_evidence.json")):
+        try:
+            if path.is_symlink() or path.parent.is_symlink():
+                raise EvidenceError("Refusing symlink receipt")
+            receipt = json.loads(path.read_text(encoding="utf-8"))
+            attempt = receipt["attempt_id"]
+            if attempt != path.parent.name or not re.fullmatch(r"[A-Za-z0-9_-]+", attempt):
+                raise EvidenceError("Receipt attempt differs from its directory")
+            journal = run_dir / "attempt_records" / (attempt + ".json")
+            if journal.is_file() and not journal.is_symlink():
+                rec = json.loads(journal.read_text(encoding="utf-8"))
+            elif attempt in positions:
+                rec = dict(rows[positions[attempt]])
+            else:
+                rec = {key: "" for key in fields}
+            pinned = [rec]
+            if attempt in positions:
+                pinned.append(rows[positions[attempt]])
+            for previous in pinned:
+                if (previous.get("attempt_id") and previous["attempt_id"] != attempt
+                        or previous.get("device_serial") and previous["device_serial"] != receipt["device_serial"]):
+                    raise EvidenceError("Saved attempt/device differs from the receipt")
+                if previous.get("runtime_evidence_path") or previous.get("runtime_evidence_sha256"):
+                    load_verified_receipt(previous, run_dir)
+            rec = {key: rec.get(key, "") for key in fields}
+            rec.update(attempt_id=attempt, device_serial=receipt["device_serial"], collection_schema=SCHEMA)
+            apply_opened_collection(rec, path, receipt, run_dir)
+            load_verified_receipt(rec, run_dir)
+            if not append_files_checked:
+                for filename, columns, metadata in (
+                        ("package_history.csv", package_history_fields(), False),
+                        ("package_metadata.csv", list(dict.fromkeys([*fields, *EXTRA_FIELDS])), True)):
+                    damaged_appends.extend((filename, row) for row in
+                                           repair_append_csv(run_dir / filename, columns, metadata=metadata))
+                append_files_checked = True
+            save_attempt_record(run_dir, rec)
+            if attempt in positions:
+                rows[positions[attempt]] = rec
+            else:
+                positions[attempt] = len(rows)
+                rows.append(rec)
+            recovered.append(attempt)
+            try:
+                append_package_history(run_dir / "package_history.csv", rec, run_dir)
+            except Exception as error:
+                errors.append({"receipt": str(path.relative_to(run_dir)),
+                               "error": "Acquisition recovered; package extraction pending: " + str(error)})
+        except (ValueError, KeyError, OSError, EvidenceError) as error:
+            errors.append({"receipt": str(path.relative_to(run_dir)), "error": str(error)})
+    if recovered:
+        replace_csv_preserving_original(manifest, fields, rows)
+    for row in damaged:
+        if row.get("attempt_id") not in recovered:
+            errors.append({"manifest": "manifest.csv", "error":
+                           "Interrupted CSV row retained in manifest backup; no matching complete receipt"})
+    for filename, row in damaged_appends:
+        if row.get("attempt_id") not in recovered:
+            errors.append({"file": filename, "error":
+                           "Interrupted append retained in backup; no matching complete receipt"})
+    return {"recovered_attempts": recovered, "errors": errors}
 
 
 def check_env(require_keyboard=True):
@@ -705,7 +922,9 @@ def open_manifest_exclusive(path):
 def main():
     global ADB_SERIAL
     ap = argparse.ArgumentParser()
-    ap.add_argument("--csv", required=True, help="CSV with mini app names")
+    ap.add_argument("--csv", help="CSV with mini app names")
+    ap.add_argument("--recover-output", metavar="RUN_DIRECTORY",
+                    help="Offline: restore manifest/history from saved receipts, without using a phone")
     ap.add_argument("--name-column", default="name")
     ap.add_argument("--id-column", default="id")
     ap.add_argument("--limit", type=int, default=10)
@@ -725,6 +944,14 @@ def main():
     ap.add_argument("--manual-before-type", action="store_true", help="you manually open/focus WeChat search; script only types each CSV name")
     ap.add_argument("--manual-open-result", action="store_true", help="after typing/searching, you manually open the correct result before dumping packages")
     args = ap.parse_args()
+    if args.recover_output:
+        report = recover_output(args.recover_output)
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        if report["errors"]:
+            raise SystemExit(1)
+        return
+    if not args.csv:
+        ap.error("--csv is required unless --recover-output is used")
     ADB_SERIAL = args.serial.strip()
 
     csv_path = Path(args.csv).expanduser().resolve()
@@ -759,9 +986,11 @@ def main():
             ADB_SERIAL = adb(["get-serialno"], timeout=15).stdout.strip()
         probe = RuntimeProbe(ADB_SERIAL, frida)
 
-    with open_manifest_exclusive(manifest_path) as mf:
+    with output_lock(out), open_manifest_exclusive(manifest_path) as mf:
         writer = csv.DictWriter(mf, fieldnames=fields)
         writer.writeheader()
+        durable_flush(mf)
+        sync_directory(out)
         for idx, row in enumerate(rows, 1):
             name = row.get(args.name_column, "").strip()
             rec = make_manifest_record(row, fields, id_column=args.id_column, name_column=args.name_column)
@@ -771,9 +1000,10 @@ def main():
                 rec[k] = meta.get(k, "")
             if args.prepare_only:
                 rec["status"] = "prepared"
-                writer.writerow(rec); mf.flush(); continue
+                writer.writerow(rec); durable_flush(mf); continue
             opened = False
             app_dir = app_root / rec["attempt_id"]
+            save_attempt_record(out, rec)
             try:
                 qr_local = rec.get("mini_code_local", "")
                 if args.open_method in ["auto", "qr"] and qr_local:
@@ -801,6 +1031,7 @@ def main():
                     evidence, receipt = collect_opened_app(
                         probe, rec["attempt_id"], app_dir, pull_for_app)
                     apply_opened_collection(rec, evidence, receipt, out)
+                    save_attempt_record(out, rec)
                     packages = [{"local_path": str(evidence.parent / p["local_file"]),
                                  "remote_path": p["remote_source"], "sha256": p["sha256"],
                                  "bytes": p["bytes"], "role": p["role"]} for p in receipt["packages"]]
@@ -809,6 +1040,9 @@ def main():
                         coverage=receipt["coverage"], decompiler_command=decompiler_command,
                         context={"collector": "initial", "requested_appid": rec["queried_appid"],
                                  "observed_version": receipt["metadata"].get("app_version"),
+                                 "observed_metadata": receipt["metadata"],
+                                 "public_metadata_status": receipt.get("public_metadata_status"),
+                                 "collection_time": receipt.get("collection_time"),
                                  "device": ADB_SERIAL, "observed_at": receipt["observed_at"]})
                     rec.update({k: processed[k] for k in ("package_acquisition_status", "metadata_status", "decompilation_status")})
                     rec["processing_path"] = str((app_dir / "processing.json").relative_to(out))
@@ -829,18 +1063,11 @@ def main():
                         flush=True,
                     )
             except Exception as e:
-                rec["status"] = ("opened_but_no_package" if isinstance(e, PackageUnavailable) else
-                                 "opened_identity_unverified" if opened and isinstance(e, EvidenceError) else "error")
-                rec["identity_status"] = "unverified" if opened else "not_observed"
-                rec["error"] = str(e)
-                retained = sorted(p for p in (app_dir / "packages").glob("*.wxapkg")
-                                  if p.is_file() and not p.is_symlink())
-                rec["local_files"] = ";".join(str(p.relative_to(out)) for p in retained)
-                rec.update(package_file_metadata(retained))
+                record_attempt_error(rec, e, opened, app_dir, out)
                 print(f"[PACKAGE_ERROR] {idx}/{len(rows)} id={rec['csv_id']} name={name} error={e}", flush=True)
-            rec["collected_at"] = iso_now()
+            save_attempt_record(out, rec)
             writer.writerow(rec)
-            mf.flush()
+            durable_flush(mf)
             metadata_rows = append_package_history(
                 history_path, rec, out, source_run=out.name, collected_at=rec.get("collected_at"))
             if metadata_rows:

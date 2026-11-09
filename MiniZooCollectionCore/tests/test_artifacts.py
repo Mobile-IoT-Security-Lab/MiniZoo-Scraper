@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import artifacts
+from minizoo_collection import artifacts
 
 
 class ArtifactsTest(unittest.TestCase):
@@ -106,8 +106,8 @@ class ArtifactsTest(unittest.TestCase):
                 self.validate()
 
     def test_capture_preserves_bytes_but_never_assigns_appid(self):
-        with patch("artifacts.inventory", return_value={self.remote: self.digest}), \
-                patch("artifacts._read_device", return_value=self.package.read_bytes()):
+        with patch("minizoo_collection.artifacts.inventory", return_value={self.remote: self.digest}), \
+                patch("minizoo_collection.artifacts._read_device", return_value=self.package.read_bytes()):
             copied = artifacts.capture("serial", {}, self.root / "collection")
             self.assertEqual(copied[0]["sha256"], self.digest)
             self.assertNotIn("appid", copied[0])
@@ -115,8 +115,8 @@ class ArtifactsTest(unittest.TestCase):
             self.assertEqual(artifacts.capture("serial", {self.remote: self.digest}, self.root / "collection"), [])
 
     def test_hash_mismatch_preserves_diagnostic_and_fails(self):
-        with patch("artifacts.inventory", return_value={self.remote: self.digest}), \
-                patch("artifacts._read_device", return_value=b"other"):
+        with patch("minizoo_collection.artifacts.inventory", return_value={self.remote: self.digest}), \
+                patch("minizoo_collection.artifacts._read_device", return_value=b"other"):
             with self.assertRaises(artifacts.ArtifactError):
                 artifacts.capture("serial", {}, self.root / "collection")
         self.assertEqual(len(list((self.root / "collection/logs").glob("unverified-*.wxapkg"))), 1)
@@ -124,13 +124,13 @@ class ArtifactsTest(unittest.TestCase):
 
     def test_inventory_rejects_traversal(self):
         raw = (self.digest + "  " + artifacts.CACHE_ROOT + "/../../outside.wxapkg\n").encode()
-        with patch("artifacts._read_device", return_value=raw):
+        with patch("minizoo_collection.artifacts._read_device", return_value=raw):
             with self.assertRaises(artifacts.ArtifactError):
                 artifacts.inventory("serial")
 
     def test_selected_capture_keeps_prefetched_bytes_without_claiming_identity(self):
-        with patch("artifacts.inventory", side_effect=AssertionError("no delta needed")), \
-                patch("artifacts._read_device", return_value=self.package.read_bytes()) as read:
+        with patch("minizoo_collection.artifacts.inventory", side_effect=AssertionError("no delta needed")), \
+                patch("minizoo_collection.artifacts._read_device", return_value=self.package.read_bytes()) as read:
             copied = artifacts.capture_selected("serial", [self.remote, self.remote], self.root / "selected")
         read.assert_called_once()
         self.assertEqual(len(copied), 1)
@@ -141,7 +141,7 @@ class ArtifactsTest(unittest.TestCase):
         self.assertEqual(json.loads(receipt.read_text())["attribution"], "requires_independent_runtime_evidence")
 
     def test_selected_capture_rejects_all_unsafe_paths_before_reading(self):
-        with patch("artifacts._read_device") as read:
+        with patch("minizoo_collection.artifacts._read_device") as read:
             with self.assertRaises(artifacts.ArtifactError):
                 artifacts.capture_selected("serial", [self.remote, artifacts.CACHE_ROOT + "/../../private.wxapkg"],
                                            self.root / "selected")
@@ -150,7 +150,7 @@ class ArtifactsTest(unittest.TestCase):
 
     def test_selected_capture_failure_preserves_successful_bytes_and_error_receipt(self):
         another = artifacts.CACHE_ROOT + "/another.wxapkg"
-        with patch("artifacts._read_device", side_effect=[self.package.read_bytes(), b""]):
+        with patch("minizoo_collection.artifacts._read_device", side_effect=[self.package.read_bytes(), b""]):
             with self.assertRaisesRegex(artifacts.ArtifactError, "empty"):
                 artifacts.capture_selected("serial", [self.remote, another], self.root / "selected")
         self.assertEqual((self.root / "selected/packages" / (self.digest + ".wxapkg")).read_bytes(),
@@ -180,7 +180,7 @@ class ArtifactsTest(unittest.TestCase):
         outputs = artifacts.decompile(packages, self.root / "collection", self.evidence["appid"], command)
         self.assertEqual(outputs[0]["status"], "verified")
         self.assertEqual(len(outputs[0]["files"]), 2)
-        with patch("artifacts.subprocess.run") as launch:
+        with patch("minizoo_collection.artifacts.subprocess.run") as launch:
             resumed = artifacts.decompile(packages, self.root / "collection", self.evidence["appid"], command)
         launch.assert_not_called()
         self.assertEqual(resumed, outputs)
@@ -202,7 +202,7 @@ class ArtifactsTest(unittest.TestCase):
             from subprocess import CompletedProcess
             return CompletedProcess(arguments, 0)
 
-        with patch("artifacts.subprocess.run", side_effect=complete_main_then_interrupt):
+        with patch("minizoo_collection.artifacts.subprocess.run", side_effect=complete_main_then_interrupt):
             with self.assertRaises(KeyboardInterrupt):
                 artifacts.decompile(packages, self.root / "collection", self.evidence["appid"], command)
         self.assertEqual(len(list((self.root / "collection/checkpoints").glob("*.json"))), 1)
@@ -213,14 +213,14 @@ class ArtifactsTest(unittest.TestCase):
             from subprocess import CompletedProcess
             return CompletedProcess(arguments, 0)
 
-        with patch("artifacts.subprocess.run", side_effect=complete_subpackage) as launch:
+        with patch("minizoo_collection.artifacts.subprocess.run", side_effect=complete_subpackage) as launch:
             resumed = artifacts.decompile(packages, self.root / "collection", self.evidence["appid"], command)
         launch.assert_called_once()
         self.assertEqual(len(resumed), 2)
         self.assertEqual(len(list((self.root / "collection/checkpoints").glob("*.json"))), 2)
 
         Path(resumed[0]["files"][0]["path"]).write_text("corrupted saved output")
-        with patch("artifacts.subprocess.run") as launch:
+        with patch("minizoo_collection.artifacts.subprocess.run") as launch:
             with self.assertRaises(artifacts.ArtifactError):
                 artifacts.decompile(packages, self.root / "collection", self.evidence["appid"], command)
         launch.assert_not_called()
@@ -267,18 +267,18 @@ class ArtifactsTest(unittest.TestCase):
                 (output / "page.js").write_text("Page({onLoad: function() {}});")
             return CompletedProcess(arguments, 0)
 
-        with patch("artifacts.subprocess.run", side_effect=restore):
+        with patch("minizoo_collection.artifacts.subprocess.run", side_effect=restore):
             first = artifacts.decompile([sub, main], self.root / "collection", self.evidence["appid"], command)
         self.assertEqual(calls, [str(self.package), str(subfile)])
         self.assertEqual([item["role"] for item in first], ["main", "subpackage"])
-        with patch("artifacts.subprocess.run") as run:
+        with patch("minizoo_collection.artifacts.subprocess.run") as run:
             self.assertEqual(artifacts.decompile([sub, main], self.root / "collection", self.evidence["appid"], command), first)
         run.assert_not_called()
         # The same subpackage with a different main cannot reuse an old decompilation.
         self.package.write_bytes(b"different main fixture")
         main.update(sha256=artifacts.sha256_file(self.package), bytes=self.package.stat().st_size)
         calls.clear()
-        with patch("artifacts.subprocess.run", side_effect=restore):
+        with patch("minizoo_collection.artifacts.subprocess.run", side_effect=restore):
             second = artifacts.decompile([sub, main], self.root / "collection", self.evidence["appid"], command)
         self.assertEqual(calls, [str(self.package), str(subfile)])
         self.assertNotEqual(second[1]["output"], first[1]["output"])

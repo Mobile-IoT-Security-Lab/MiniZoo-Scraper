@@ -2,9 +2,11 @@
 import csv
 import hashlib
 import json
+import os
 from pathlib import Path
 import static_wxapkg_reader as reader
-from opened_app_identity import SCHEMA, METADATA_FIELDS, load_verified_receipt
+from opened_app_identity import SCHEMA, METADATA_FIELDS, load_verified_receipt, sync_directory
+from minizoo_collection.artifacts import _immutable
 
 KINDS = {
     'extracted_names_json': 'name_or_title',
@@ -46,6 +48,13 @@ def queried(record, field):
     return value if record.get('collection_schema') == SCHEMA else value or record.get(field, '')
 
 
+def acquisition_key(digest, source_run, path, remote, record):
+    # Processing-state changes during a retry are not another acquisition.
+    identity = record.get('attempt_id') if record.get('collection_schema') == SCHEMA else None
+    return (digest, source_run, path, remote,
+            identity or json.dumps(record, ensure_ascii=False, sort_keys=True))
+
+
 def append_collected_package_metadata(csv_path, local_files, query_record, *, source_run, remote_sources=(), base_fields=()):
     """One row per package SHA/provenance, never substitute CSV query for content."""
     csv_path = Path(csv_path)
@@ -63,7 +72,8 @@ def append_collected_package_metadata(csv_path, local_files, query_record, *, so
             existing = csv.DictReader(source)
             if existing.fieldnames != fields:
                 raise ValueError('package_metadata_schema_mismatch_use_new_output')
-            seen = {(r['package_sha256'],r['source_run'],r['package_local_path'],r['remote_source'],r['query_record_json']) for r in existing}
+            seen = {acquisition_key(r['package_sha256'], r['source_run'], r['package_local_path'],
+                                    r['remote_source'], json.loads(r['query_record_json'])) for r in existing}
     written = 0
     with csv_path.open('a', newline='', encoding='utf-8') as destination:
         writer = csv.DictWriter(destination, fieldnames=fields)
@@ -80,9 +90,8 @@ def append_collected_package_metadata(csv_path, local_files, query_record, *, so
             if index < len(expected) and expected[index] and expected[index] != digest:
                 raise ValueError('package_sha256_mismatch')
             remote = remote_sources[index] if index < len(remote_sources) else ''
-            query_json = json.dumps(query_record, ensure_ascii=False, sort_keys=True)
-            key = (digest,source_run,str(path),remote,query_json)
-            if key in seen:
+            capture_key = acquisition_key(digest, source_run, str(path), remote, query_record)
+            if capture_key in seen:
                 continue
             directory = csv_path.parent/'package_metadata_evidence'/digest
             directory.mkdir(parents=True, exist_ok=True)
@@ -95,10 +104,10 @@ def append_collected_package_metadata(csv_path, local_files, query_record, *, so
                 result, evidence = reader.parse_one((digest, path.stat().st_size, str(path)))
                 for entry in evidence:
                     entry['source_sha256'] = digest
-                with evidence_path.open('x',encoding='utf-8') as stream:
-                    stream.write(''.join(json.dumps(e, ensure_ascii=False)+'\n' for e in evidence))
-                with summary_path.open('x',encoding='utf-8') as stream:
-                    stream.write(json.dumps(result, ensure_ascii=False, indent=2))
+                _immutable(evidence_path, ''.join(json.dumps(e, ensure_ascii=False)+'\n'
+                                                 for e in evidence).encode('utf-8'))
+                _immutable(summary_path, (json.dumps(result, ensure_ascii=False, indent=2) + '\n').encode('utf-8'))
+                sync_directory(directory)
             row = {field: query_record.get(field, '') for field in base_fields}
             for field, value in {'local_files':str(path),'remote_sources':remote,'package_size_bytes':path.stat().st_size,'md5':'','username':'','metadata_verified_at':''}.items():
                 if field in fields:
@@ -128,6 +137,7 @@ def append_collected_package_metadata(csv_path, local_files, query_record, *, so
                 row.update(package_attribution='runtime_verified', identity_status='runtime_verified')
                 for key, value in {'md5':hashlib.md5(path.read_bytes()).hexdigest(),
                                    'metadata_verified_at':receipt['observed_at'],
+                                   'collected_at':receipt.get('collection_time') or query_record.get('collected_at', ''),
                                    'csv_id':receipt['appid']}.items():
                     if key in fields:
                         row[key] = value
@@ -141,6 +151,8 @@ def append_collected_package_metadata(csv_path, local_files, query_record, *, so
             row['all_extracted_fields_json'] = json.dumps({k:{f:unique(v) for f,v in fields.items()} for k,fields in grouped.items()}, ensure_ascii=False,sort_keys=True)
             writer.writerow(row)
             destination.flush()
-            seen.add(key)
+            os.fsync(destination.fileno())
+            seen.add(capture_key)
             written += 1
+    sync_directory(csv_path.parent)
     return written

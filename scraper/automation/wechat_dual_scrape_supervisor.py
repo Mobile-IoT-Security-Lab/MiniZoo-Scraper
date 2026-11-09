@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Start/monitor dual-device WeChat Mini App scraping.
+"""Start/monitor explicitly configured WeChat collection devices.
 
 - Uses mini_app_scraping_status.csv to select only missing apps.
-- Splits inputs between the two connected devices.
+- Splits inputs between the configured devices.
 - Merges new packages into local canonical storage every 10 minutes.
 - Stops both workers after 10 consecutive global failures.
 - On stop/completion: final merge, duplicate report, local CSV rebuild.
@@ -244,12 +244,6 @@ def final_catalogue_rebuild(reason: str) -> None:
     stream(f'final local catalogue rebuilt: {reason}')
 
 
-def pause_automation_crons() -> None:
-    for job in SETTINGS.cron_jobs:
-        run(['hermes', 'cron', 'pause', job], cwd=Path.home(), check=False, timeout=120)
-        stream(f'paused WeChat automation cron job {job}')
-
-
 def main() -> int:
     stream('dual scrape supervisor starting')
     SETTINGS.check_storage()
@@ -257,14 +251,12 @@ def main() -> int:
     for serial in DEVICES:
         if run(['adb', '-s', serial, 'get-state'], timeout=30).stdout.strip() != 'device':
             raise RuntimeError(f'Device unavailable: {serial}')
-    for job in SETTINGS.cron_jobs:
-        run(['hermes', 'cron', 'resume', job], cwd=Path.home(), check=False, timeout=120)
     run_dir = prepare_run()
     def stop_signal(signum, frame):
         raise KeyboardInterrupt(f'Stop signal {signum}')
     signal.signal(signal.SIGTERM, stop_signal)
     workers: dict[str, subprocess.Popen] = {}
-    # Internal timer by default; explicit Hermes jobs may own periodic merges.
+    # Explicit local supervisor owns periodic merges.
     next_merge = time.monotonic() + 600
     stop_reason = 'completed'
     try:
@@ -289,7 +281,7 @@ def main() -> int:
                 break
             if not any(running.values()):
                 break
-            if not SETTINGS.cron_jobs and time.monotonic() >= next_merge:
+            if time.monotonic() >= next_merge:
                 merge_once('periodic')
                 next_merge = time.monotonic() + 600
             # Poll faster than the workers can normally append rows so the
@@ -300,7 +292,6 @@ def main() -> int:
         raise
     finally:
         terminate_workers(workers)
-        pause_automation_crons()
         stream(f'finalizing reason={stop_reason}')
         merge_once('final')
         stats = dedupe_canonical()

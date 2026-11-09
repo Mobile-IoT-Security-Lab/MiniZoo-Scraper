@@ -43,25 +43,25 @@ x-runtime: &runtime
 services:
   discovery:
     <<: *runtime
-    entrypoint: ["python3", "/opt/wechat/docker/discovery.py"]
+    entrypoint: ["python3", "/opt/wechat/minizoo.py", "discovery"]
     command: ["--help"]
     volumes:
       - *config-mount
       - *input-mount
       - *data-mount
       - type: bind
-        source: ${MINICRAWLER_DIR:-./scraper/MiniCrawler}
+        source: ${MINICRAWLER_DIR:-./discovery/vendor/MiniCrawler}
         target: /opt/minicrawler
         read_only: true
         bind:
           create_host_path: false
   collection:
     <<: *runtime
-    entrypoint: ["python3", "/opt/wechat/scraper/wechat_csv_scraper.py"]
+    entrypoint: ["python3", "/opt/wechat/minizoo.py", "collection"]
     command: ["--help"]
   version:
     <<: *runtime
-    entrypoint: ["python3", "/opt/wechat/version_scraper/main.py"]
+    entrypoint: ["python3", "/opt/wechat/minizoo.py", "version"]
     command: ["--help"]
   # Compatibility/tool shell, selected explicitly by `docker compose run collector ...`.
   collector:

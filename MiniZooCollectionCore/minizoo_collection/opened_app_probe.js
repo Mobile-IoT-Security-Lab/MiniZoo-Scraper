@@ -5,6 +5,7 @@
 // Discover actual runtime identities; never seed identity from the search CSV.
 const TARGET_APPID = null;
 const ATTEMPT_ID = globalThis.PROBE_ATTEMPT_ID || null;
+const METADATA_SCHEMA = 'minizoo_public_metadata_v2';
 
 setImmediate(function () {
   if (typeof Java === 'undefined') {
@@ -213,7 +214,7 @@ setImmediate(function () {
       });
       if (fieldsSeen >= 4000) scanLimits.push({path: 'runtime', reason: 'field_limit'});
       send({kind: 'runtime-package-metadata', target_appid: TARGET_APPID,
-            attempt_id: ATTEMPT_ID,
+            attempt_id: ATTEMPT_ID, metadata_schema: METADATA_SCHEMA,
             target_found: targetFound, runtime_class: String(instance.getClass().getName()),
             process_id: Process.id, observed_at: new Date().toISOString(),
             schema: schema, objects: objects, references: targetFound ? references : [],
@@ -223,7 +224,8 @@ setImmediate(function () {
             note: 'Field provenance only; inspect package path and release semantics before certifying.'});
     }
 
-    function readNamedField(instance, name) {
+    function readNamedField(instance, name, limit) {
+      limit = limit || 4096;
       let cls = instance.getClass();
       for (let level = 0; cls !== null && level < 12; level++, cls = cls.getSuperclass()) {
         try {
@@ -232,7 +234,7 @@ setImmediate(function () {
           const value = field.get(instance);
           if (value === null) return null;
           const text = String(value);
-          if (text.length <= 4096 && !/[\x00]/.test(text))
+          if (text.length <= limit && !/[\x00]/.test(text))
             return {value: text, declaring_class: String(cls.getName()), field: name};
           return null;
         } catch (_) {}
@@ -258,29 +260,96 @@ setImmediate(function () {
             const fields = {}, provenance = {};
             const allowed = {
               field_nickname: 'name', field_username: 'username',
-              field_signature: 'description', field_brandIconURL: 'icon_url'
+              field_signature: 'description', field_brandIconURL: 'icon_url',
+              field_dynamicInfo: 'raw_dynamic_info', field_registerSource: 'raw_register_source',
+              field_appInfo: 'raw_app_info'
             };
             Object.keys(allowed).forEach(name => {
-              const entry = readNamedField(instance, name);
+              const entry = readNamedField(instance, name, /dynamicInfo|registerSource|appInfo/.test(name) ? 65536 : 4096);
               if (entry && entry.value) {
                 fields[allowed[name]] = entry.value;
                 provenance[allowed[name]] = entry;
               }
             });
             send({kind: 'runtime-public-metadata', attempt_id: ATTEMPT_ID,
-                  appid: identity.value, metadata_class: className,
+                  appid: identity.value, metadata_class: className, metadata_schema: METADATA_SCHEMA,
                   process_id: Process.id, observed_at: new Date().toISOString(),
                   identity_field: identity, fields: fields, provenance: provenance});
           },
           onComplete: function () {
             send({kind: 'metadata-public-records-complete', inspected: inspected,
                   truncated: inspected > 128});
-            send({kind: 'metadata-probe-complete', runtime_instances: count});
+            readCachedPublicMetadata();
           }
         });
       } catch (_) {
         // Optional public fields remain empty on unsupported WeChat builds.
         send({kind: 'metadata-public-records-unavailable', metadata_class: className});
+        readCachedPublicMetadata();
+      }
+    }
+
+    function readCachedPublicMetadata() {
+      // Only already-open public attribute databases. The runtime, never the
+      // search query, supplies the single AppID. No DB is opened or modified.
+      const appid = Array.from(focusedAppIds)[0];
+      if (!/^wx[0-9a-f]{16}$/.test(appid || '')) {
+        send({kind: 'metadata-probe-complete', runtime_instances: count});
+        return;
+      }
+      const seen = new Set();
+      let inspected = 0;
+      const bound = {attempt_id: ATTEMPT_ID, appid: appid, process_id: Process.id,
+                     metadata_schema: METADATA_SCHEMA};
+      try {
+        Java.choose('com.tencent.wcdb.database.SQLiteDatabase', {
+          onMatch: function (db) {
+            if (inspected++ >= 128) return 'stop';
+            let path;
+            try { path = String(db.getPath()); } catch (_) { return; }
+            if (!/^\/data\/(?:data|user\/\d+)\/com\.tencent\.mm\/MicroMsg\/[0-9a-f]{32}\/AppBrandComm\.db$/.test(path)
+                || seen.has(path) || seen.size >= 4) return;
+            seen.add(path);
+            for (const table of ['WxaAttributesTable', 'WxaAttrAvailableBackupTable']) {
+              let cursor = null, count = 0, truncated = false;
+              try {
+                const fields = ['appId', 'nickname', 'signature', 'brandIconURL', 'registerSource', 'dynamicInfo', 'appInfo'];
+                // AppID was regex-validated above; identifiers are fixed constants.
+                const sql = 'SELECT ' + fields.join(',') + ' FROM ' + table +
+                            " WHERE appId='" + appid + "' LIMIT 3";
+                cursor = db.rawQuery.overload('java.lang.String', '[Ljava.lang.Object;').call(db, sql, null);
+                while (cursor.moveToNext()) {
+                  if (count >= 2) { truncated = true; break; }
+                  const row = {}, invalid = [];
+                  fields.forEach((key, index) => {
+                    let value = cursor.isNull(index) ? null : String(cursor.getString(index));
+                    const limit = /dynamicInfo|registerSource|appInfo/.test(key) ? 65536 : 4096;
+                    if (value !== null && (value.length > limit || /[\x00]/.test(value))) {
+                      invalid.push(key); value = null;
+                    }
+                    row[key] = value;
+                  });
+                  count++;
+                  send(Object.assign({}, bound, {kind: 'runtime-cached-public-metadata',
+                    database_path: path, table: table, row: row, invalid_fields: invalid,
+                    observed_at: new Date().toISOString()}));
+                }
+                send(Object.assign({}, bound, {kind: 'metadata-public-table-complete',
+                  database_path: path, table: table, count: count, truncated: truncated}));
+              } catch (_) {
+                send(Object.assign({}, bound, {kind: 'metadata-public-table-unavailable',
+                  database_path: path, table: table}));
+              } finally { if (cursor !== null) cursor.close(); }
+            }
+          },
+          onComplete: function () {
+            send(Object.assign({}, bound, {kind: 'metadata-public-cache-complete',
+              databases: seen.size, inspected: inspected, truncated: inspected > 128}));
+            send({kind: 'metadata-probe-complete', runtime_instances: count});
+          }
+        });
+      } catch (_) {
+        send(Object.assign({}, bound, {kind: 'metadata-public-cache-unavailable'}));
         send({kind: 'metadata-probe-complete', runtime_instances: count});
       }
     }

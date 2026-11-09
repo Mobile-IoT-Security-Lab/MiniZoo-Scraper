@@ -14,7 +14,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def run(*args, cwd=ROOT):
-    result = subprocess.run(args, cwd=cwd, text=True, capture_output=True, check=True)
+    result = subprocess.run(args, cwd=cwd, text=True, capture_output=True)
+    if result.returncode:
+        print(result.stdout + result.stderr, file=sys.stderr)
+        raise SystemExit(result.returncode)
     return result.stdout.strip()
 
 
@@ -23,7 +26,8 @@ def main():
     parser.add_argument("--discovery-source", type=Path, help="Also test the external pinned MiniCrawler integration")
     args = parser.parse_args()
     if args.discovery_source:
-        from discovery import load_source
+        sys.path.insert(0, str(ROOT / "discovery"))
+        from main import load_source
         load_source(args.discovery_source)
         os.environ["MINICRAWLER_SOURCE"] = str(args.discovery_source)
     assert sys.version_info[:2] == (3, 12)
@@ -40,8 +44,7 @@ def main():
     sys.path.insert(0, str(ROOT / "MiniZooCollectionCore"))
     from minizoo_collection import processing, runtime
     assert processing and runtime
-    run(sys.executable, "-m", "unittest", "discover", "-s", "version_scraper/tests", "-p", "test_ocr_tesseract.py")
-    run(sys.executable, "-m", "unittest", "discover", "-s", "docker", "-p", "test_*.py")
+    run(sys.executable, "minizoo.py", "test", *( ["--integration"] if args.discovery_source else []))
     # A synthetic blank PGM exercises the actual Tesseract process and JSON adapter.
     with tempfile.TemporaryDirectory() as tmp:
         fixture = Path(tmp) / "blank.pgm"
@@ -51,7 +54,7 @@ def main():
     commit = run("git", "-c", "safe.directory=/opt/wxappUnpacker", "-C", "/opt/wxappUnpacker", "rev-parse", "HEAD")
     assert commit == "694ca3874e67b89dd709f3d577c85a553bd45a0c"
     assert list(Path("/opt/wxappUnpacker").glob("LICENSE*"))
-    print("PASS: Python/Node/Frida pins, OCR engine + geometry tests, all three CLI imports, bootstrap/response tests, shared core and pinned decompiler source.")
+    print("PASS: Python/Node/Frida pins, OCR, all three CLI imports, metadata capture/replay, static post-decompilation recovery, interrupted-run recovery, bootstrap/response tests, shared core and pinned decompiler source.")
     print("External discovery checkpoint/response integration: " + ("PASS" if args.discovery_source else "not requested (use --discovery-source /opt/minicrawler)."))
 
 
