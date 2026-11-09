@@ -120,19 +120,7 @@ acquisitions and reconstruction failures preserve valid original bytes. See the
 [core policy](MiniZooCollectionCore/README.md#recovering-missing-metadata) and
 [interrupted-run recovery](scraper/README.md#recovering-an-interrupted-run).
 
-## Validation status
 
-On 9 November 2026, a reference mini app completed identity verification, package
-collection and reconstruction on three physical Android phones in native and
-Docker runs. Some runs required retries after Appium timeouts or slow initial
-loading. Other sampled apps produced partial packages or reconstruction failures;
-a successful reference run does not guarantee full coverage for every mini app.
-
-The initial collector can need a different Mini Programs menu position. Android
-may also block the legacy ADBKeyboard; ASCII queries can use the documented
-fallback. Direct USB access from Docker on Linux and parallel multi-phone batch
-distribution have not been verified on real hardware. See the module guides for
-configuration, retained failure evidence and retry controls.
 
 ## License and citation
 
