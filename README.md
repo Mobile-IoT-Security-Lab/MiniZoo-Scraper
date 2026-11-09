@@ -3,7 +3,7 @@
 Collect WeChat Mini Programs and their metadata on a rooted Android phone.
 Save everything locally in `collection_results/`.
 
-## 1. Install and try it
+## 1. Install
 
 On **macOS or Linux**, install [Git](https://git-scm.com/downloads) and
 [Docker with Compose](https://docs.docker.com/get-started/get-docker/), then start Docker.
@@ -13,12 +13,10 @@ Open a terminal and run:
 git clone https://github.com/Mobile-IoT-Security-Lab/MiniZoo-Scraper.git
 cd MiniZoo-Scraper
 docker compose build collection
-docker run --rm --network none minizoo-scraper:public example all
 ```
 
-**Expected result:** four `PASSED` lines: discovery, collection, version and core.
-This uses synthetic data and needs no phone. The first build downloads the
-software dependencies; Python and Node.js are included in Docker.
+The first build downloads the software dependencies. Python and Node.js are
+included in Docker. When the build finishes, connect your phone below.
 
 ## 2. Connect your phone
 
@@ -58,7 +56,7 @@ collector to save its progress before disconnecting a phone.
 ## Other tasks
 
 - [Inspect or reconstruct saved packages](MiniZooCollectionCore/README.md).
-- [Keep example results, troubleshoot Docker or use Linux USB](docs/DOCKER.md).
+- [Troubleshoot Docker or use Linux USB](docs/DOCKER.md).
 - [Install without Docker](docs/NATIVE.md).
 - [Optional batch collection](scraper/automation/README.md).
 

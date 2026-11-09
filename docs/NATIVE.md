@@ -4,18 +4,6 @@ Use this only if you want to install the dependencies directly on macOS or Linux
 For the recommended Docker setup, start with the [main guide](../README.md).
 Run commands from the repository root.
 
-## Try the examples first
-
-With Python 3.12+, no additional packages are needed for these offline examples:
-
-```sh
-python3 minizoo.py example all
-```
-
-Expect four `PASSED` lines. Results and `result.json` are saved in a new folder
-under `collection_results/examples/`. Select `discovery`, `collection`, `version`
-or `core` in place of `all` to run one example.
-
 ## Install the shared Python environment
 
 ```sh

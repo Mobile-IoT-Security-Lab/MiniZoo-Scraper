@@ -5,7 +5,7 @@ Search WeChat by keyword and save AppIDs and available public metadata.
 
 ## Quick start with Docker
 
-First complete [installation](../README.md#1-install-and-try-it) and
+First complete [installation](../README.md#1-install) and
 [phone setup](../docs/DOCKER.md#connect-phones). Run commands from the repository
 root in the terminal where you set `DEVICE_SERIAL`.
 
@@ -82,6 +82,5 @@ python3 minizoo.py discovery run --serial "$DEVICE_SERIAL" --max-queries 1
 python3 minizoo.py discovery status
 ```
 
-Offline example: `python3 minizoo.py example discovery`.
 Options: `python3 minizoo.py discovery --help`.
 For a separate queue, pass `--database PATH` before the subcommand on every call.

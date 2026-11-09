@@ -6,7 +6,7 @@ use this shared module automatically.
 
 ## Quick start with Docker
 
-Build the image using the [main guide](../README.md#1-install-and-try-it), then
+Build the image using the [main guide](../README.md#1-install), then
 prepare the folders used by the tool container:
 
 ```sh
@@ -14,17 +14,7 @@ mkdir -p private/config private/input collection_results
 export LOCAL_UID="$(id -u)" LOCAL_GID="$(id -g)"
 ```
 
-### 1. Try the example
-
-```sh
-docker run --rm --network none minizoo-scraper:public example core
-```
-
-Expect `PASSED: core`. It creates a tiny synthetic plaintext package and checks
-its structure, metadata evidence and SHA-256. See [example output](../docs/DOCKER.md#immediate-examples)
-to keep the generated files.
-
-### 2. Inspect your package
+### 1. Inspect your package
 
 Put a package in `collection_results/package.wxapkg`, or replace the path below
 with an actual saved package under `/data`:
@@ -36,7 +26,7 @@ docker compose run --rm collector inspect /data/package.wxapkg
 This prints a JSON report with size, hashes, parsing status and static metadata.
 It reads the bytes without executing the package's code.
 
-### 3. Reconstruct its files
+### 2. Reconstruct its files
 
 ```sh
 docker compose run --rm collector decompile \
@@ -73,11 +63,10 @@ verification; see [path handling](../docs/DOCKER.md#inspect-or-reconstruct-saved
 
 ## Native usage
 
-Follow the [native installation](../docs/NATIVE.md). The offline example needs
-only Python 3.12+; reconstruction also needs Node.js and the pinned unpacker.
+Follow the [native installation](../docs/NATIVE.md), including Node.js and the
+pinned unpacker for reconstruction.
 
 ```sh
-python3 minizoo.py example core
 python3 minizoo.py inspect collection_results/package.wxapkg
 python3 minizoo.py decompile \
   --package collection_results/package.wxapkg --output collection_results/reconstruction-001

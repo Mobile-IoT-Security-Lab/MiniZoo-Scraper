@@ -5,7 +5,7 @@ Open a named Mini Program in WeChat and save its packages and metadata locally.
 
 ## Quick start with Docker
 
-First complete [installation](../README.md#1-install-and-try-it) and
+First complete [installation](../README.md#1-install) and
 [phone setup](../docs/DOCKER.md#connect-phones). Run commands from the repository
 root in the terminal where you set `DEVICE_SERIAL`.
 
@@ -94,5 +94,4 @@ python3 minizoo.py collection \
   --serial "$DEVICE_SERIAL" --csv private/input/initial.csv --limit 1
 ```
 
-Offline example: `python3 minizoo.py example collection`.
 All options: `python3 minizoo.py collection --help`.

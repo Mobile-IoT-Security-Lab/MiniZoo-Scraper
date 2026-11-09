@@ -5,7 +5,7 @@ Revisit known Mini Programs and compare their observed versions with a saved bas
 
 ## Quick start with Docker
 
-First complete [installation](../README.md#1-install-and-try-it) and
+First complete [installation](../README.md#1-install) and
 [phone setup](../docs/DOCKER.md#connect-phones). Run commands from the repository
 root in the terminal where you set `DEVICE_SERIAL`.
 
@@ -137,5 +137,4 @@ python3 minizoo.py version --config private/config/version.json run --max-items 
 python3 minizoo.py version --config private/config/version.json status
 ```
 
-Offline example: `python3 minizoo.py example version`.
 All commands: `python3 minizoo.py version --help`.

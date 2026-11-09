@@ -1,6 +1,6 @@
 # Docker setup and troubleshooting
 
-Start with [install and try it](../README.md#1-install-and-try-it). This page
+Start with [installation](../README.md#1-install). This page
 connects that installation to a real phone. Commands use the default project
 folders and run from the repository root on macOS or Linux.
 
@@ -99,30 +99,6 @@ Keep WeChat open and follow **one** guide:
 
 In a new terminal, repeat the three `export` assignments above. The folders,
 installed keyboard and saved collection state remain available.
-
-## Immediate examples
-
-Examples need only the collector image, with no phone or local settings:
-
-```sh
-docker run --rm --network none minizoo-scraper:public example all
-```
-
-Expect `PASSED` for discovery, collection, version and core. Each example checks
-synthetic local outputs; failed checks return a nonzero exit code. Replace `all`
-with one of those names to run one example. Its module guide describes the scope.
-
-To keep the example files and `result.json` inside the project:
-
-```sh
-mkdir -p collection_results
-docker run --rm --network none --user "$(id -u):$(id -g)" \
-  --mount "type=bind,src=$(pwd)/collection_results,dst=/data" \
-  minizoo-scraper:public example all
-```
-
-Results appear in a new `collection_results/examples/all-*/` folder. Without
-this mount, removing the container also removes its example results.
 
 ## Common problems
 
