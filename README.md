@@ -84,7 +84,7 @@ discovery/                      # Discovery and optional external adapter
 scraper/                        # Initial collection and optional batches
 version_scraper/                # Version collection and navigation adapters
 MiniZooCollectionCore/          # Shared acquisition and processing engine
-tools/                         # Private version-config generator
+tools/                         # Config generator, adapter installer and publication guard
 docker/                        # Collector and Appium container setup
 compose.yaml                   # Independently started services
 compose.linux-usb.yaml          # Optional Linux USB server
@@ -98,7 +98,9 @@ collection_results/            # Default outputs; ignored by Git
 
 Inputs, configurations, acquired packages, device identifiers, screenshots and
 logs stay outside the tracked source and Docker build context. Do not force-add
-them. The bundled example CSV is synthetic. Check staged files before publication.
+them. The bundled example CSV is synthetic. Before publication, run
+`python3 tools/check_publication.py` to check the staged files and public source.
+The GitHub publication workflow also scans source and reachable history for secrets.
 
 Configuration generation never overwrites an existing file. Version paths are
 resolved from the config file's folder; explicit CLI paths keep the caller's
@@ -117,6 +119,20 @@ Static app declarations are a separate, provenance-checked fallback. Partial
 acquisitions and reconstruction failures preserve valid original bytes. See the
 [core policy](MiniZooCollectionCore/README.md#recovering-missing-metadata) and
 [interrupted-run recovery](scraper/README.md#recovering-an-interrupted-run).
+
+## Validation status
+
+On 9 November 2026, a reference mini app completed identity verification, package
+collection and reconstruction on three physical Android phones in native and
+Docker runs. Some runs required retries after Appium timeouts or slow initial
+loading. Other sampled apps produced partial packages or reconstruction failures;
+a successful reference run does not guarantee full coverage for every mini app.
+
+The initial collector can need a different Mini Programs menu position. Android
+may also block the legacy ADBKeyboard; ASCII queries can use the documented
+fallback. Direct USB access from Docker on Linux and parallel multi-phone batch
+distribution have not been verified on real hardware. See the module guides for
+configuration, retained failure evidence and retry controls.
 
 ## License and citation
 

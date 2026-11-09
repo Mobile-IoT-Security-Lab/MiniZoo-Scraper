@@ -63,6 +63,9 @@ resolve from that config's folder, regardless of the launch folder.
 The [example config](config.example.json) documents pacing and adapter commands.
 Each device needs a unique `name`, `udid` and Appium `system_port`; `account`
 groups devices sharing account-level pauses. Keep real settings under `private/`.
+`load_wait` is the delay in seconds after opening a mini app (default: 8). Raise
+it for slow first downloads. An app still downloading may have no verifiable
+package binding; retain the outcome and retry after loading completes.
 
 ## Start one bounded acquisition
 
@@ -97,6 +100,10 @@ Ten consecutive distinct empty searches pause collection; rate-limit responses
 stop it immediately. Counters and the minimum wait survive restart. `run` does
 not silently clear a pause. Interrupted searches stay pending without consuming
 the retry budget. Stop acquisition before `retry`, `resume` or `report`.
+
+Connection or worker failures return a nonzero exit code and retain a device
+report. A completed command can still contain per-app failures: inspect
+`status` or `report` before treating an acquisition as complete.
 
 ## Local outputs and evidence
 

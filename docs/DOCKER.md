@@ -29,7 +29,7 @@ The optional MiniCrawler adapter remains an external read-only mount. Install it
 only for discovery:
 
 ```sh
-git submodule update --init discovery/vendor/MiniCrawler
+python3 tools/fetch_discovery_source.py
 ```
 
 Its source hashes are checked against the pinned revision. Other modules do not
@@ -51,7 +51,7 @@ files. Defaults keep all inputs and results inside the project:
 | `private/config/` | `/config` | Read-only settings. |
 | `private/input/` | `/input` | Read-only catalogues and seed files. |
 | `collection_results/` | `/data` | Writable results and checkpoints. |
-| `discovery/vendor/MiniCrawler/` | `/opt/minicrawler` | Read-only, discovery only. |
+| `private/dependencies/MiniCrawler/` | `/opt/minicrawler` | Read-only, discovery only. |
 | `private/adb/` | `/root/.android` | Authorization keys, optional Linux ADB service only. |
 
 Private settings, keys and collected data are excluded from Git and the Docker
@@ -122,7 +122,9 @@ docker compose run --rm -e ANDROID_SERIAL=DEVICE_B collector bash scraper/setup_
 ```
 
 The installer downloads the APK, verifies its pinned checksum, and installs and
-enables it only on that phone. See the [initial guide](../scraper/README.md#installation).
+enables it only on that phone. Android may block this legacy APK. The initial
+collector supports `--allow-no-adbkeyboard` for ASCII-only names; the version
+collector uses Appium instead. See the [initial guide](../scraper/README.md#installation).
 
 ### Start Appium for version navigation
 
@@ -171,6 +173,9 @@ docker compose run --rm collection \
   --serial DEVICE_B --csv /input/initial.csv --limit 1 \
   --output /data/initial/run-001
 ```
+
+If the Discover menu places Mini Programs on another row, pass its vertical
+screen fraction, for example `--mini-programs-row-y 0.435`.
 
 Choose a fresh output for every new run. For an interrupted run, stop its writer
 and use `collection --recover-output /data/initial/run-001`. Recovery reads saved

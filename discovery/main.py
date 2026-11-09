@@ -16,6 +16,7 @@ import signal
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -46,8 +47,8 @@ def load_source(source):
         path = directory / name
         if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise RuntimeError(
-                f"Missing or modified MiniCrawler source: {name}. Initialize the pinned "
-                f"submodule ({SOURCE_COMMIT}) and mount it read-only at {source}."
+                f"Missing or modified MiniCrawler source: {name}. Run "
+                "python3 tools/fetch_discovery_source.py, or provide the pinned adapter with --source."
             )
     sys.path.insert(0, str(directory))
     return importlib.import_module("pixel_crawler"), importlib.import_module("pixel_batch_crawler")
@@ -168,11 +169,27 @@ def query_phone(args, crawler, query, cursor):
         raise RuntimeError("No unique WeChat main process; open WeChat's Mini Program search page")
     options = dict(query=query, offset=cursor["offset"], cookies=cursor["cookies"],
                    search_id=cursor["search_id"], current_page=cursor["page"], wait_ms=6500)
-    result = subprocess.run([
-        args.frida, "-D", args.serial, "-p", pid, "-q", "--no-auto-reload", "-t", "11",
-        "-e", "globalThis.__MC_OPTIONS = " + json.dumps(options, ensure_ascii=False) + ";",
-        "-l", str(args.source / "MetadataCrawler/frida_direct_query.js"),
-    ], capture_output=True, text=True, timeout=25)
+    # Cursor cookies belong in private storage, never in process arguments or
+    # exception messages. A single combined script preserves the bridge's
+    # strict mode and options-before-query execution order.
+    try:
+        bridge = (args.source / "MetadataCrawler/frida_direct_query.js").read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory(prefix=".minizoo-query-", dir=args.database.parent) as temporary:
+            script = Path(temporary) / "query.js"
+            fd = os.open(script, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                stream.write("'use strict';\nglobalThis.__MC_OPTIONS = " + json.dumps(options) + ";\n")
+                stream.write(bridge)
+            result = subprocess.run([
+                args.frida, "-D", args.serial, "-p", pid, "-q", "--no-auto-reload", "-t", "11",
+                "-l", str(script),
+            ], capture_output=True, text=True, timeout=25)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("Discovery bridge timed out; page cursor retained") from None
+    except subprocess.SubprocessError:
+        raise RuntimeError("Discovery bridge process failed; page cursor retained") from None
+    except OSError:
+        raise RuntimeError("Discovery bridge could not start; page cursor retained") from None
     completed = [value for value in crawler.parse_frida_messages(result.stdout) if value.get("phase") == "completed"]
     if result.returncode or len(completed) != 1:
         # Never print raw Frida output: it can contain request cookies.
@@ -273,7 +290,7 @@ def exclusive(database):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", type=Path, default=Path(os.environ.get("MINICRAWLER_SOURCE", str(Path(__file__).resolve().parents[1] / "discovery" / "vendor" / "MiniCrawler"))))
+    parser.add_argument("--source", type=Path, default=Path(os.environ.get("MINICRAWLER_SOURCE", str(Path(__file__).resolve().parents[1] / "private" / "dependencies" / "MiniCrawler"))))
     parser.add_argument("--database", type=Path, default=Path(os.environ.get("MINIZOO_DATA_DIR", str(Path(__file__).resolve().parents[1] / "collection_results"))) / "discovery" / "data.db")
     commands = parser.add_subparsers(dest="command", required=True)
     init = commands.add_parser("init", help="Seed a persistent queue without contacting a phone")

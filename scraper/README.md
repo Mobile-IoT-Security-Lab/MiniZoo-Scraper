@@ -30,6 +30,9 @@ ANDROID_SERIAL=DEVICE_A bash scraper/setup_adbkeyboard.sh
 The keyboard installer downloads the separately licensed
 [ADBKeyboard](https://github.com/senzhk/ADBKeyBoard) APK, verifies its pinned
 SHA-256, and installs and enables it on this phone.
+Some Android versions block this legacy APK through Play Protect. In that case,
+ASCII search names can use `--allow-no-adbkeyboard`; Chinese names still require
+a compatible keyboard. The Appium version collector does not depend on ADBKeyboard.
 The APK is not bundled. The expected checksum is
 `e698adea5633135a067b038f9a0cf41baa4de09888713a81593fb2b9682cdc59`.
 
@@ -61,6 +64,8 @@ separate in `queried_*` fields.
 | `--open-method auto` / `qr` | Try or require available Mini Program QR/code assets. |
 | `--manual-before-type --manual-open-result` | Allow manual UI actions in an interactive terminal. |
 | `--prepare-only` | Prepare metadata/QR assets without a phone; public HTTP sources may still be queried. |
+| `--mini-programs-row-y 0.435` | Adjust the Mini Programs row for a different Discover menu layout; default is `0.515`. Also accepts `WECHAT_MINIPROGRAMS_ROW_Y`. |
+| `--allow-no-adbkeyboard` | Use the system keyboard for ASCII-only search names when ADBKeyboard is unavailable. |
 | `--frida PATH` | Select a Frida executable; `WECHAT_FRIDA` is also supported. |
 
 All methods retain the same identity checks. Cache deletion is rejected. The

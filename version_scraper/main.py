@@ -605,6 +605,8 @@ class Runner:
         except Exception as error:
             write_json(self.store.output / "reports" / ("device-" + device["name"] + ".json"),
                        {"at": now(), "device": device, "error": str(error)})
+            # Keep the report and propagate startup/worker failures to the CLI.
+            raise
         finally:
             try:
                 phone.close()

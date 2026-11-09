@@ -14,8 +14,8 @@ Android applications, or collected Mini Program packages.
 
 The first-party discovery module supplies persistent query scheduling
 and process control. Its device search adapter is loaded at runtime from an
-external MiniCrawler checkout mounted read-only. That checkout is not copied
-into the container image and is not covered by the project's MIT grant.
+external MiniCrawler adapter mounted read-only. Those source files are not copied
+into the container image and are not covered by the project's MIT grant.
 
 The initial collector originated in
 [WeChatMiniAppScraper](https://github.com/luca959/WeChatMiniAppScraper), with local
@@ -38,15 +38,15 @@ schema identifiers and evidence semantics.
 
 | Component | Pinned source or installation | License treatment |
 | --- | --- | --- |
-| MiniCrawler | Optional submodule `discovery/vendor/MiniCrawler`, revision `5cd8dff0ea25f8bd52f4898954b8bd8d76ef6958` from [luca959/MiniCrawler](https://github.com/luca959/MiniCrawler) | No LICENSE file is present at this revision. It is not covered by this repository's MIT grant and is not bundled into the release archive or container. |
+| MiniCrawler | Three external adapter files from revision `5cd8dff0ea25f8bd52f4898954b8bd8d76ef6958` of [luca959/MiniCrawler](https://github.com/luca959/MiniCrawler), retrieved with `tools/fetch_discovery_source.py` and verified by SHA-256 | No LICENSE file is present at this revision. It is not covered by this repository's MIT grant and is not bundled into the repository, release archive or container. |
 | wxappUnpacker | Submodule `version_scraper/vendor/wxappUnpacker`, revision `694ca3874e67b89dd709f3d577c85a553bd45a0c` from [threecha/wxappUnpacker](https://github.com/threecha/wxappUnpacker) | Retains its upstream GNU GPL v3 license and notices. It is invoked as a separate tool; the MIT license does not replace its terms. |
 | Appium and UiAutomator2 | Exact versions in `version_scraper/package-lock.json` | Keep their own package licenses and dependency notices. Installed `node_modules` are not committed. |
 | Frida and frida-tools | Exact versions in `requirements.txt` | Keep their upstream package licenses. Device-side installation is separate. |
 | ADBKeyboard | Installed separately using `scraper/setup_adbkeyboard.sh` | The APK is not part of this release; retain the upstream license and installation terms. |
 | Android SDK platform tools and optional OCR dependencies | Installed by the user or the documented container build | Their licenses remain separate from the project MIT license. |
 
-The Git submodule references preserve dependency provenance; initializing a
-submodule does not change its license. The container documentation identifies
+The pinned adapter hashes and remaining Git submodule preserve dependency
+provenance; installing them does not change their licenses. The container documentation identifies
 which components are installed and which remain external.
 
 ## Data and attribution

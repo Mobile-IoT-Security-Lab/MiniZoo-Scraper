@@ -194,7 +194,7 @@ def merge_active() -> dict[str, int | str]:
                        if p == OUT or OUT in p.parents):
                     raise ValueError('Canonical provenance uses a symlink')
                 provenance = json.loads(provenance_path.read_text()) if provenance_path.is_file() else []
-                entry = {'manifest': str(manifest.relative_to(ROOT)), 'row': row}
+                entry = {'manifest_root': 'data', 'manifest': str(manifest.relative_to(SETTINGS.data)), 'row': row}
                 if entry not in provenance:
                     provenance.append(entry)
                 if pair in existing_hashes:

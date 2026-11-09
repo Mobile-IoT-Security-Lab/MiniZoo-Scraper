@@ -34,6 +34,7 @@ __pycache__/
 .appium/
 .npm-cache/
 .cache/
+.minizoo-query-*/
 build/
 dist/
 *.egg-info/

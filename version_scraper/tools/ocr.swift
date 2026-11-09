@@ -104,11 +104,17 @@ do {
         }
     }
     let pixelWidth = Double(image.width), pixelHeight = Double(image.height)
-    let nodes: [[String: Any]] = recognized.map { item in
+    let nodes: [[String: Any]] = recognized.compactMap { item in
         let box = item.box
-        let bounds = [Int(floor(box.minX * pixelWidth)), Int(floor((1 - box.maxY) * pixelHeight)),
-                      Int(ceil(box.maxX * pixelWidth)), Int(ceil((1 - box.minY) * pixelHeight))]
-        return ["text": item.text, "confidence": item.confidence, "bounds": bounds]
+        // Vision can place edge text a fraction outside the normalized image.
+        // Clip to real pixels before rounding; keep navigation's strict bounds checks.
+        let left = max(0, min(image.width, Int(floor(box.minX * pixelWidth))))
+        let top = max(0, min(image.height, Int(floor((1 - box.maxY) * pixelHeight))))
+        let right = max(0, min(image.width, Int(ceil(box.maxX * pixelWidth))))
+        let bottom = max(0, min(image.height, Int(ceil((1 - box.minY) * pixelHeight))))
+        guard left < right, top < bottom else { return nil }
+        return ["text": item.text, "confidence": item.confidence,
+                "bounds": [left, top, right, bottom]]
     }
     let result: [String: Any] = ["width": image.width, "height": image.height, "nodes": nodes]
     let output = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])

@@ -24,7 +24,8 @@ from pathlib import Path
 from opened_app_identity import SCHEMA, METADATA_FIELDS, EvidenceError, load_verified_receipt, confined_file
 
 ROOT = Path(os.environ.get("WECHAT_ROOT", str(Path(__file__).resolve().parent))).expanduser().resolve()
-OUT = Path(os.environ.get("WECHAT_DATA_DIR", str(ROOT.parent / "collection_results" / "initial"))) / "all_mini_apps"
+DATA = Path(os.environ.get("WECHAT_DATA_DIR", str(ROOT.parent / "collection_results" / "initial"))).expanduser().resolve()
+OUT = DATA / "all_mini_apps"
 DB = Path(os.environ.get("WECHAT_DISCOVERY_DB", str(ROOT.parent / "collection_results" / "discovery" / "data.db")))
 
 FIELDS_BASE = [
@@ -41,6 +42,22 @@ STATUS_FIELDS = [
 ]
 TOTAL_FIELDS = FIELDS_BASE + ["metadata_sources", "raw_json"]
 TRACKING_FIELDS = FIELDS_BASE + STATUS_FIELDS
+
+
+
+def source_label(path: Path) -> str:
+    """Describe local sources without requiring data below the code directory."""
+    for base in (DATA, ROOT):
+        if path.is_relative_to(base):
+            return str(path.relative_to(base))
+    return str(path)
+
+
+def provenance_manifest(provenance: dict) -> Path:
+    anchor = provenance.get("manifest_root", "code")
+    if anchor not in {"data", "code"}:
+        raise EvidenceError("Unknown canonical provenance root")
+    return confined_file(DATA if anchor == "data" else ROOT, provenance["manifest"])
 
 
 def norm(v) -> str:
@@ -172,7 +189,7 @@ def canonical_package_records() -> list[dict[str, str]]:
                 "validation_status": "canonical_package_present",
                 "manifest_hash_status": hash_status,
                 "source_runs": "canonical_all_mini_apps",
-                "source_files": str(package.relative_to(ROOT)),
+                "source_files": source_label(package),
                 # File modification time can change during copies or merges;
                 # it is not evidence of when this package was acquired.
                 "collected_at": "",
@@ -184,7 +201,7 @@ def canonical_package_records() -> list[dict[str, str]]:
                 if sidecar.is_symlink():
                     raise EvidenceError("Canonical runtime provenance is a symlink")
                 for provenance in json.loads(sidecar.read_text(encoding="utf-8")):
-                    manifest = confined_file(ROOT, provenance["manifest"])
+                    manifest = provenance_manifest(provenance)
                     receipt, verified_packages = load_verified_receipt(provenance["row"], manifest.parent)
                     if receipt["appid"] != appid or not any(p["sha256"] == actual_sha for p in verified_packages):
                         raise EvidenceError("Canonical provenance does not match AppID/package")
@@ -192,7 +209,7 @@ def canonical_package_records() -> list[dict[str, str]]:
                     record.update(identity_status="runtime_verified", validation_status="runtime_verified",
                                   metadata_verified_at=receipt["observed_at"],
                                   device_serial=receipt["device_serial"],
-                                  _metadata_source=str(sidecar.relative_to(ROOT)))
+                                  _metadata_source=source_label(sidecar))
             records.append(record)
     return records
 
@@ -207,7 +224,7 @@ def package_records() -> list[dict[str, str]]:
         for row in read_csv(source):
             if appid_of(row) and norm(row.get("sha256") or row.get("package_sha256") or row.get("latest_package_sha256")):
                 row = dict(row)
-                row["_metadata_source"] = str(source.relative_to(ROOT))
+                row["_metadata_source"] = source_label(source)
                 records.append(row)
     # Deduplicate by appid+sha256.
     unique = {}
@@ -281,13 +298,13 @@ def main() -> int:
     previous_status = read_csv(OUT / "mini_app_scraping_status.csv")
     for source in [OUT / "all_mini_apps_total.csv", OUT / "mini_app_scraping_status.csv"]:
         for record in read_csv(source):
-            add_source(apps, record, str(source.relative_to(ROOT)))
+            add_source(apps, record, source_label(source))
     attempts = list(previous_status)
     for manifest in sorted((OUT.parent / "active_runs").glob("*/device_*/manifest.csv")):
         for record in read_csv(manifest):
             record = dict(record)
-            record["source_runs"] = record.get("source_runs") or str(manifest.parent.relative_to(ROOT))
-            record["source_files"] = record.get("source_files") or str(manifest.relative_to(ROOT))
+            record["source_runs"] = record.get("source_runs") or source_label(manifest.parent)
+            record["source_files"] = record.get("source_files") or source_label(manifest)
             if record.get("collection_schema") == SCHEMA:
                 query = json.loads(record.get("query_metadata_json") or "{}")
                 query.update(appid=record.get("queried_appid", ""), status=record.get("status", ""),
@@ -297,14 +314,14 @@ def main() -> int:
                     query["status"] = "opened_different_app"
                     query["error"] = "Opened AppID: " + record.get("appid", "")
                 if re.fullmatch(r"wx[a-f0-9]{16}", query["appid"]):
-                    add_source(apps, query, str(manifest.relative_to(ROOT)) + ":search_context")
+                    add_source(apps, query, source_label(manifest) + ":search_context")
                     attempts.append(query)
                 if record.get("package_attribution") != "runtime_verified" or record.get("status") != "ok":
                     continue
                 receipt, _ = load_verified_receipt(record, manifest.parent)
                 record.update({key: receipt["metadata"].get(key, "") for key in METADATA_FIELDS})
                 record["identity_status"] = "runtime_verified"
-            add_source(apps, record, str(manifest.relative_to(ROOT)))
+            add_source(apps, record, source_label(manifest))
             attempts.append(record)
     attempts_by_app: dict[str, list[dict[str, str]]] = defaultdict(list)
     for record in attempts:
@@ -321,7 +338,7 @@ def main() -> int:
         OUT / "legacy_metadata" / "collection_attempts.csv",
     ]:
         for row in read_csv(source):
-            add_source(apps, row, str(source.relative_to(ROOT)) if source.is_relative_to(ROOT) else str(source))
+            add_source(apps, row, source_label(source))
 
     packages = package_records()
     for row in packages:

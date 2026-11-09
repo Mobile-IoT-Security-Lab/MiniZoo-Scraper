@@ -79,3 +79,4 @@ docker/**
 **/*.local.*
 **/.env
 **/.env.*
+**/.minizoo-query-*/

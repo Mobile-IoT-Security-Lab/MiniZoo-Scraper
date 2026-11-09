@@ -24,8 +24,10 @@ Before starting, provide the intended catalogue as
 `collection_results/initial/all_mini_apps/all_mini_apps_total.csv`, with at least
 `appid` and `name`, or configure `WECHAT_DISCOVERY_DB` for the discovery database.
 `WECHAT_ROOT`, if overridden, points to `scraper/`. Data and locks default to
-`collection_results/initial/` and `collection_results/automation/`. Concurrent
-processes must share the lock directory.
+`collection_results/initial/` and `collection_results/automation/`. The data
+directory can be outside `scraper/`, including the mounted `/data/initial` in
+Docker. Canonical provenance points to retained runs within that data directory.
+Concurrent processes must share the lock directory.
 
 The supervisor deduplicates AppIDs, prioritizes unresolved attempts, partitions
 the queue and uses one output per worker. Every ten minutes it verifies and

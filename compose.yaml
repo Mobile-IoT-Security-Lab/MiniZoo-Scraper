@@ -50,7 +50,7 @@ services:
       - *input-mount
       - *data-mount
       - type: bind
-        source: ${MINICRAWLER_DIR:-./discovery/vendor/MiniCrawler}
+        source: ${MINICRAWLER_DIR:-./private/dependencies/MiniCrawler}
         target: /opt/minicrawler
         read_only: true
         bind:

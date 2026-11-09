@@ -50,6 +50,7 @@ WECHAT_PACKAGE = "com.tencent.mm"
 ADBKEYBOARD_PKG = "com.android.adbkeyboard"
 ADBKEYBOARD_IME = "com.android.adbkeyboard/.AdbIME"
 ADB_SERIAL = ""
+MINIPROGRAMS_ROW_Y = 0.515
 
 
 def run(cmd, check=True, timeout=None, input_text=None):
@@ -684,7 +685,7 @@ def open_miniprogram_search():
         launch_wechat()
         # Bottom nav: Discover, then the Mini Programs row.
         tap(w * 0.625, h * 0.955, 1.2)
-        tap(w * 0.22, h * 0.515, 2.0)
+        tap(w * 0.22, h * MINIPROGRAMS_ROW_Y, 2.0)
         for _ in range(6):
             tap(w * 0.50, h * 0.147, 1.0)
             focus = current_focus()
@@ -920,7 +921,7 @@ def open_manifest_exclusive(path):
 
 
 def main():
-    global ADB_SERIAL
+    global ADB_SERIAL, MINIPROGRAMS_ROW_Y
     ap = argparse.ArgumentParser()
     ap.add_argument("--csv", help="CSV with mini app names")
     ap.add_argument("--recover-output", metavar="RUN_DIRECTORY",
@@ -943,7 +944,13 @@ def main():
     ap.add_argument("--clear-cache-before-open", action="store_true", help="unsupported: cache deletion is disabled")
     ap.add_argument("--manual-before-type", action="store_true", help="you manually open/focus WeChat search; script only types each CSV name")
     ap.add_argument("--manual-open-result", action="store_true", help="after typing/searching, you manually open the correct result before dumping packages")
+    ap.add_argument("--mini-programs-row-y", type=float,
+                    default=os.environ.get("WECHAT_MINIPROGRAMS_ROW_Y", "0.515"),
+                    help="Mini Programs row position as a fraction of screen height (0 to 1)")
     args = ap.parse_args()
+    if not 0 < args.mini_programs_row_y < 1:
+        ap.error("--mini-programs-row-y must be between 0 and 1")
+    MINIPROGRAMS_ROW_Y = args.mini_programs_row_y
     if args.recover_output:
         report = recover_output(args.recover_output)
         print(json.dumps(report, ensure_ascii=False, indent=2))

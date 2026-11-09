@@ -19,13 +19,15 @@ Use the shared Python environment in the [main guide](../README.md#install-only-
 Only this module needs the separately maintained MiniCrawler source:
 
 ```sh
-git submodule update --init discovery/vendor/MiniCrawler
+python3 tools/fetch_discovery_source.py
 ```
 
-The adapter verifies the pinned source files before loading them. The upstream
-checkout has no license file at the pinned revision and is not bundled into the
+The installer retrieves only the three required adapter files and verifies their
+SHA-256 hashes before saving them under `private/dependencies/MiniCrawler`.
+The adapter verifies them again before loading them. The external source has no
+license file at the pinned revision and is not bundled into the repository or
 container; see [provenance](../docs/PROVENANCE.md). Set `MINICRAWLER_SOURCE` or
-`--source` to use that exact revision from another directory.
+`--source` to use those exact files from another directory.
 
 ## Initialize and inspect a queue
 
