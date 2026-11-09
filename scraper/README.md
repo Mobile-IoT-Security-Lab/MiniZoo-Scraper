@@ -60,18 +60,6 @@ To collect more rows, change `--limit 1` to the desired count. Each run creates
 a new output folder and starts from the first CSV row; `--start N` skips N rows.
 Press Ctrl-C once and wait for saved state before disconnecting the phone.
 
-## Try without a phone
-
-After building the image:
-
-```sh
-docker run --rm --network none minizoo-scraper:public example collection
-```
-
-Expect `PASSED: collection`. The synthetic example prepares one manifest row
-without acquiring packages. See [example output](../docs/DOCKER.md#immediate-examples)
-to keep its files.
-
 ## Options and recovery
 
 | Option | When to use it |

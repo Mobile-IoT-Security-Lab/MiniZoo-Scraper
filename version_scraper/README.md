@@ -77,18 +77,6 @@ Press Ctrl-C once and wait for the checkpoint. When finished with this module:
 docker compose stop appium
 ```
 
-## Try without a phone
-
-After building the collector image:
-
-```sh
-docker run --rm --network none minizoo-scraper:public example version
-```
-
-Expect `PASSED: version`. The synthetic example checks queue initialization,
-baseline preservation and reports without Appium or a phone. See
-[example output](../docs/DOCKER.md#immediate-examples) to keep its files.
-
 ## Results, restart and limits
 
 Use one collector per phone and output directory. The version baseline advances

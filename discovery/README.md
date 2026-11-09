@@ -51,18 +51,6 @@ apps; a paused or failed request needs attention before continuing.
 Run the same command again to continue the queue. `--max-queries 5` processes
 up to five queries; `--max-queries 0` explicitly requests an unbounded run.
 
-## Try without a phone
-
-After building the image:
-
-```sh
-docker run --rm --network none minizoo-scraper:public example discovery
-```
-
-Expect `PASSED: discovery`. The synthetic example checks catalogue updates,
-metadata preservation and CSV export. See [example output](../docs/DOCKER.md#immediate-examples)
-to keep its files. It does not perform a live search.
-
 ## Results, restart and limits
 
 The queue is bound to its first phone and permits one writer. Keep the same
