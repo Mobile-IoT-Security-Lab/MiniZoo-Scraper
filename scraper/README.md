@@ -1,154 +1,110 @@
-# Mini App Crawler
+# Collect your first mini app
 
-Open names from a CSV, identify the Mini Program actually opened, and retain its
-original packages and evidence locally. Navigation uses ADB and ADBKeyboard.
-This module does not require Appium, the discovery module or a versioning queue.
-Run the following commands from the repository root.
+Open a named Mini Program in WeChat and save its packages and metadata locally.
+**Input:** a CSV with a `name` column. **Output:** `collection_results/initial/`.
 
-## Immediate example
+## Quick start with Docker
 
-From the repository root, with Python 3.12+:
+First complete [installation](../README.md#1-install-and-try-it) and
+[phone setup](../docs/DOCKER.md#connect-phones). Run commands from the repository
+root in the terminal where you set `DEVICE_SERIAL`.
 
-```sh
-python3 minizoo.py example collection
+### 1. Add the app you want to collect
+
+Create `private/input/initial.csv` with this structure. Replace the second line
+with the **exact name of a real Mini Program you can find in WeChat**:
+
+```csv
+name
+YOUR_MINI_APP_NAME
 ```
 
-Runs the collector with `--prepare-only --open-method search` on the bundled
-synthetic CSV. Checks one `prepared` manifest row, preserved search input and
-empty acquired-package fields. It prepares a search without contacting a phone
-or an HTTP source; package capture is covered by the bounded phone run below.
+Add more names on separate lines when needed. A discovery catalogue is also
+accepted. Optional columns include `appid`, `description`, `developer`,
+`icon_url` and `app_version`.
 
-No dependency installation, phone, credentials or network is required. The
-command prints `PASSED: collection` and saves results plus `result.json` under a
-new `collection_results/examples/collection-*/` folder. A failed check exits with
-code 1. Repeated runs keep earlier results.
+### 2. Prepare the keyboard once
 
-After building the shared Docker image, the same example runs independently:
+```sh
+docker compose run --rm -e ANDROID_SERIAL="$DEVICE_SERIAL" collector bash scraper/setup_adbkeyboard.sh
+```
+
+This installs and enables ADBKeyboard on the selected phone. If Android blocks
+it, ASCII-only names can use `--allow-no-adbkeyboard` in the next command.
+Chinese names require a compatible keyboard.
+
+### 3. Collect one app
+
+Keep the phone unlocked with WeChat open:
+
+```sh
+docker compose run --rm collection \
+  --serial "$DEVICE_SERIAL" --csv /input/initial.csv --limit 1
+```
+
+### 4. Open the result
+
+Open the newest **`collection_results/initial/csv_batch_*/`** folder:
+
+| File or folder | What to look for |
+| --- | --- |
+| `manifest.csv` | The app attempted and its acquisition, metadata and reconstruction outcomes. |
+| `attempts/` | Saved packages and evidence for each attempt. |
+| `package_metadata.csv` | Metadata extracted from the saved packages. |
+
+A finished command can contain a failed or partial acquisition: read the outcome
+in `manifest.csv`. Missing metadata remains explicit. If another app opens,
+its observed identity is recorded separately from the requested app.
+
+To collect more rows, change `--limit 1` to the desired count. Each run creates
+a new output folder and starts from the first CSV row; `--start N` skips N rows.
+Press Ctrl-C once and wait for saved state before disconnecting the phone.
+
+## Try without a phone
+
+After building the image:
 
 ```sh
 docker run --rm --network none minizoo-scraper:public example collection
 ```
 
-Container results are temporary unless `/data` is mounted; see the
-[Docker example guide](../docs/DOCKER.md#immediate-examples).
+Expect `PASSED: collection`. The synthetic example prepares one manifest row
+without acquiring packages. See [example output](../docs/DOCKER.md#immediate-examples)
+to keep its files.
 
-## Commands
+## Options and recovery
 
-```sh
-python3 minizoo.py collection --help
-```
-
-For a container installation, use the independent `collection` service in the
-[Docker guide](../docs/DOCKER.md).
-
-## Installation
-
-Create the common environment and install Frida as shown in the
-[main guide](../README.md#install-only-what-you-use). For live collection, use
-Android Platform Tools and an authorized rooted phone with WeChat logged in
-and a matching Frida server. Find the serial with `adb devices -l`.
-
-```sh
-adb -s DEVICE_A get-state
-adb -s DEVICE_A shell su -c id
-ANDROID_SERIAL=DEVICE_A bash scraper/setup_adbkeyboard.sh
-```
-
-The keyboard installer downloads the separately licensed
-[ADBKeyboard](https://github.com/senzhk/ADBKeyBoard) APK, verifies its pinned
-SHA-256, and installs and enables it on this phone.
-Some Android versions block this legacy APK through Play Protect. In that case,
-ASCII search names can use `--allow-no-adbkeyboard`; Chinese names still require
-a compatible keyboard. The Appium version collector does not depend on ADBKeyboard.
-The APK is not bundled. The expected checksum is
-`e698adea5633135a067b038f9a0cf41baa4de09888713a81593fb2b9682cdc59`.
-
-Install Node.js 26+ and the pinned reconstruction dependency using the main
-guide. This collector imports the bundled [shared core](../MiniZooCollectionCore/README.md).
-The [Docker guide](../docs/DOCKER.md) provides an alternative installation.
-
-## Run one acquisition
-
-Supply your own UTF-8 CSV with a `name` column. Include `appid`, `description`,
-`developer`, `icon_url` and `app_version` when available; `--name-column` selects
-a differently named column. Discovery's `catalog.csv` is accepted directly.
-
-```sh
-python3 minizoo.py collection \
-  --serial DEVICE_A --csv private/input/initial.csv --limit 1 \
-  --output collection_results/initial/trial-001
-```
-
-Use a new output directory for a new run; an existing `manifest.csv` is rejected
-before device access. `--start` and `--limit` select rows, not a resume point.
-If a search for A opens B, runtime evidence identifies B: B's packages and
-observed metadata are retained while A remains unresolved. Search input stays
-separate in `queried_*` fields.
-
-| Option | Use |
+| Option | When to use it |
 | --- | --- |
-| `--open-method search` | Default text search. |
-| `--open-method auto` / `qr` | Try or require available Mini Program QR/code assets. |
-| `--manual-before-type --manual-open-result` | Allow manual UI actions in an interactive terminal. |
-| `--prepare-only` | Prepare metadata/QR assets without a phone; public HTTP sources may still be queried. |
-| `--mini-programs-row-y 0.435` | Adjust the Mini Programs row for a different Discover menu layout; default is `0.515`. Also accepts `WECHAT_MINIPROGRAMS_ROW_Y`. |
-| `--allow-no-adbkeyboard` | Use the system keyboard for ASCII-only search names when ADBKeyboard is unavailable. |
-| `--frida PATH` | Select a Frida executable; `WECHAT_FRIDA` is also supported. |
+| `--mini-programs-row-y 0.435` | The Mini Programs row is at a different height in the Discover menu; default is `0.515`. |
+| `--allow-no-adbkeyboard` | ADBKeyboard is unavailable and search names contain only ASCII characters. |
+| `--output /data/initial/my-run` | Choose a new result directory explicitly. Existing manifests are refused. |
+| `--prepare-only --open-method search` | Prepare input and a manifest without a phone or network. |
+| `--open-method auto` or `qr` | Try or require available Mini Program QR/code assets. |
+| `--name-column COLUMN` | The input uses a column other than `name`. |
 
-All methods retain the same identity checks. Cache deletion is rejected. The
-retired `--packages-per-app` option is ignored: every available runtime-bound
-component is eligible for capture. An unknown screen stops navigation.
-
-## Local results
-
-```text
-collection_results/initial/trial-001/
-  manifest.csv
-  package_history.csv
-  package_metadata.csv
-  package_metadata_evidence/
-  attempt_records/
-  attempts/<attempt>/
-    before/messages.json
-    after/messages.json
-    opened_app_evidence.json
-    evidence.json
-    packages/
-    package_metadata.json
-    processing.json
-```
-
-Public fields come from the observed AppID's runtime or device metadata,
-including categories and registered developer when available. Missing or
-conflicting values remain explicit. Static extraction and reconstruction finish
-before the next search. Coverage is complete only when original configuration,
-runtime inventory and acquired components agree; a decompilation failure keeps
-valid original bytes. See the [metadata format](README_package_metadata.md).
-
-Saved packages can be inspected independently:
+For an interrupted run, stop its writer and recover the saved records. Replace
+`YOUR_RUN` with the actual folder name:
 
 ```sh
-python3 minizoo.py inspect /absolute/path/package.wxapkg
+docker compose run --rm collection --recover-output /data/initial/YOUR_RUN
 ```
 
-## Recovering an interrupted run
+Recovery reads existing evidence, preserves original packages and rebuilds the
+CSV records. Keep the full acquisition folder at its original path. Coverage
+and reconstruction outcomes are explained in the [metadata guide](README_package_metadata.md).
+For optional scheduling and merging, see [batch collection](automation/README.md).
 
-Acquisition time, metadata, hashes and identity evidence are saved before
-reconstruction. Stop the writer, then recover its durable records offline:
+## Native usage
+
+Follow the [native installation](../docs/NATIVE.md), including reconstruction
+tools. With the phone prepared and the same CSV input:
 
 ```sh
-python3 minizoo.py collection --recover-output collection_results/initial/trial-001
+ANDROID_SERIAL="$DEVICE_SERIAL" bash scraper/setup_adbkeyboard.sh
+python3 minizoo.py collection \
+  --serial "$DEVICE_SERIAL" --csv private/input/initial.csv --limit 1
 ```
 
-Recovery revalidates evidence and bytes, preserves the previous manifest and
-rebuilds CSV records without duplicating an attempt. It does not open another
-app, invent missing fields or replace acquisition dates with recovery time.
-Keep the complete acquisition directory and its original paths together.
-
-## Optional batch collection
-
-Single-device collection needs no scheduler. The remaining multi-device
-supervisor and local consolidation tools are documented in the
-[automation guide](automation/README.md). They preserve separate workers,
-checkpoints and original evidence. Legacy retry daemons, external rating
-scrapers and the old manual merger are no longer part of this release.
+Offline example: `python3 minizoo.py example collection`.
+All options: `python3 minizoo.py collection --help`.

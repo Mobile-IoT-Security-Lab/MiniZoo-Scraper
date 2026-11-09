@@ -1,119 +1,99 @@
-# Mini App Discovery
+# Discover mini apps
 
-Find WeChat AppIDs and public metadata from keywords. This module has its own
-SQLite queue and page checkpoints. It does not start either package collector.
-All commands below run from the repository root.
+Search WeChat by keyword and save AppIDs and available public metadata.
+**Input:** one search term per line. **Output:** `collection_results/discovery/catalog.csv`.
 
-## Immediate example
+## Quick start with Docker
 
-From the repository root, with Python 3.12+:
+First complete [installation](../README.md#1-install-and-try-it) and
+[phone setup](../docs/DOCKER.md#connect-phones). Run commands from the repository
+root in the terminal where you set `DEVICE_SERIAL`.
+
+### 1. Install the discovery adapter once
 
 ```sh
-python3 minizoo.py example discovery
+mkdir -p private/dependencies
+docker compose run --rm -v "$PWD/private/dependencies:/dependencies" collector \
+  python3 tools/fetch_discovery_source.py --destination /dependencies/MiniCrawler
 ```
 
-Writes one synthetic AppID to SQLite, repeats a sparse metadata update and exports
-`catalog.csv`. Checks that the AppID is not duplicated, earlier metadata is kept
-and absent categories stay empty. This exercises catalogue persistence after
-response parsing; live query parsing and phone navigation require the adapter
-and the bounded phone run below.
+Expect `"status": "installed"` or `"status": "unchanged"`. This downloads three
+files and verifies their pinned checksums. Only discovery needs this adapter.
 
-No dependency installation, phone, credentials or network is required. The
-command prints `PASSED: discovery` and saves results plus `result.json` under a
-new `collection_results/examples/discovery-*/` folder. A failed check exits with
-code 1. Repeated runs keep earlier results.
+### 2. Add your search terms
 
-After building the shared Docker image, the same example runs independently:
+Create `private/input/queries.txt`, for example:
+
+```text
+weather
+travel
+```
+
+Initialize the local queue:
+
+```sh
+docker compose run --rm discovery init --queries /input/queries.txt
+```
+
+### 3. Run one query
+
+On the phone, open **WeChat's Mini Program search page**, then run:
+
+```sh
+docker compose run --rm discovery run --serial "$DEVICE_SERIAL" --max-queries 1
+docker compose run --rm discovery status
+```
+
+Open **`collection_results/discovery/catalog.csv`** to see the discovered apps.
+The status shows the number of apps and pending queries. A query may return no
+apps; a paused or failed request needs attention before continuing.
+
+Run the same command again to continue the queue. `--max-queries 5` processes
+up to five queries; `--max-queries 0` explicitly requests an unbounded run.
+
+## Try without a phone
+
+After building the image:
 
 ```sh
 docker run --rm --network none minizoo-scraper:public example discovery
 ```
 
-Container results are temporary unless `/data` is mounted; see the
-[Docker example guide](../docs/DOCKER.md#immediate-examples).
-
-## Commands
-
-```sh
-python3 minizoo.py discovery --help
-```
-
-For a container installation, use the independent `discovery` service in the
-[Docker guide](../docs/DOCKER.md).
-
-## Install the live adapter
-
-Use the shared Python environment in the [main guide](../README.md#install-only-what-you-use).
-Only this module needs the separately maintained MiniCrawler source:
-
-```sh
-python3 tools/fetch_discovery_source.py
-```
-
-The installer retrieves only the three required adapter files and verifies their
-SHA-256 hashes before saving them under `private/dependencies/MiniCrawler`.
-The adapter verifies them again before loading them. The external source has no
-license file at the pinned revision and is not bundled into the repository or
-container; see [provenance](../docs/PROVENANCE.md). Set `MINICRAWLER_SOURCE` or
-`--source` to use those exact files from another directory.
-
-## Initialize and inspect a queue
-
-Create `private/input/queries.txt` with one intended search term per line. For
-an illustrative local setup:
-
-```sh
-mkdir -p private/input
-printf '%s\n' weather travel > private/input/queries.txt
-python3 minizoo.py discovery init --queries private/input/queries.txt
-python3 minizoo.py discovery status
-```
-
-`init` needs the adapter source but does not contact a phone. Repeating it adds
-unseen seeds without resetting progress. The database defaults to
-`collection_results/discovery/data.db`. Override it before the subcommand:
-
-```sh
-python3 minizoo.py discovery --database collection_results/discovery-trial/data.db init --queries private/input/queries.txt
-```
-
-Use the same `--database` for every later command on that queue.
-
-## Run one query on a phone
-
-The authorized rooted phone needs WeChat logged in, its Mini Program search
-page open and a matching Frida server running. Select its serial from
-`adb devices -l`:
-
-```sh
-python3 minizoo.py discovery run --serial DEVICE_A --max-queries 1
-python3 minizoo.py discovery status
-```
-
-This contacts the selected phone. One completed query is the default limit;
-`--max-queries 0` explicitly requests an unbounded queue. The default cap is five
-pages per query. A queue is bound to its first serial and permits one writer.
-Use different phones and databases for concurrent roles.
+Expect `PASSED: discovery`. The synthetic example checks catalogue updates,
+metadata preservation and CSV export. See [example output](../docs/DOCKER.md#immediate-examples)
+to keep its files. It does not perform a live search.
 
 ## Results, restart and limits
 
-`collection_results/discovery/catalog.csv` is the operational catalogue for
-initial collection; it is not a package-release CSV. The private database also
-retains raw responses, query cookies, cursors and errors. Missing metadata does
-not erase a previous observation. App names and Chinese 2-4-character substrings
-expand the queue; keywords are never substituted for native categories.
-
-Ctrl-C/SIGTERM saves the current bounded request. Run again with the same paths
-to continue pending work. A capped query retains its cursor:
+The queue is bound to its first phone and permits one writer. Keep the same
+phone and database when continuing. Each query is capped at five pages by default.
+To continue capped queries after inspecting the phone:
 
 ```sh
-python3 minizoo.py discovery resume --include-capped
-python3 minizoo.py discovery run --serial DEVICE_A --max-pages 10 --max-queries 1
+docker compose run --rm discovery resume --include-capped
+docker compose run --rm discovery run --serial "$DEVICE_SERIAL" --max-pages 10 --max-queries 1
 ```
 
-Ten consecutive genuine empty queries or an explicit rate-limit/verification
-response pause discovery. Transport, schema and callback errors preserve the
-cursor and stop the run; they are not empty results. Inspect the phone before
-explicitly using `resume`. Nothing restarts automatically.
+Ctrl-C saves the current request. Ten consecutive genuine empty queries or a
+rate-limit/verification response pause discovery. Other request errors retain
+the cursor and stop the run. Nothing restarts automatically.
 
-For containers, use the independent `discovery` service in the [Docker guide](../docs/DOCKER.md).
+`catalog.csv` can be used as initial-collection input. The database also retains
+responses and cursors. Missing metadata preserves earlier values; search terms
+are never used as categories. The adapter is separately maintained and is not
+bundled; see [provenance](../docs/PROVENANCE.md).
+
+## Native usage
+
+Follow the [native installation](../docs/NATIVE.md), then use the same query file:
+
+```sh
+python3 tools/fetch_discovery_source.py
+python3 minizoo.py discovery init --queries private/input/queries.txt
+python3 minizoo.py discovery run --serial "$DEVICE_SERIAL" --max-queries 1
+python3 minizoo.py discovery status
+```
+
+Offline example: `python3 minizoo.py example discovery`.
+Options: `python3 minizoo.py discovery --help`.
+For a separate queue, pass `--database PATH` before the subcommand on every call.

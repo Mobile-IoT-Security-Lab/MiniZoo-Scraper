@@ -11,6 +11,7 @@
 !docs/
 docs/**
 !docs/DOCKER.md
+!docs/NATIVE.md
 !docs/PROVENANCE.md
 !docs/images/
 docs/images/**

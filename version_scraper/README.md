@@ -1,110 +1,147 @@
-# Mini App Version Crawler
+# Collect newer versions
 
-Revisit known AppIDs, retain packages and runtime evidence, and compare versions
-against a working CSV. Appium navigates, ADB reads the cache and Frida verifies
-identity. This module has its own configuration and checkpoints; it does not
-launch discovery or initial collection. Run commands from the repository root.
+Revisit known Mini Programs and compare their observed versions with a saved baseline.
+**Input:** AppID, name and previous version. **Output:** `collection_results/version/`.
 
-## Immediate example
+## Quick start with Docker
 
-From the repository root, with Python 3.12+:
+First complete [installation](../README.md#1-install-and-try-it) and
+[phone setup](../docs/DOCKER.md#connect-phones). Run commands from the repository
+root in the terminal where you set `DEVICE_SERIAL`.
 
-```sh
-python3 minizoo.py example version
+### 1. Add the apps to revisit
+
+Create `private/input/apps.csv` with these columns:
+
+```csv
+appid,name,previous_app_version
+wx0123456789abcdef,Example Mini App,1
 ```
 
-Generates local configuration for the bundled synthetic CSV, initializes the
-queue twice, then reads status and writes a report. Checks that exactly one item
-remains pending and that the input and baseline bytes are unchanged. The
-placeholder device is never contacted; Appium navigation and version acquisition
-require the bounded phone run below.
+The row above is synthetic: replace it with a real AppID, name and known previous
+version. Keep the header. Add one app per row.
 
-No dependency installation, phone, credentials or network is required. The
-command prints `PASSED: version` and saves results plus `result.json` under a
-new `collection_results/examples/version-*/` folder. A failed check exits with
-code 1. Repeated runs keep earlier results.
+### 2. Start Appium
 
-After building the shared Docker image, the same example runs independently:
+Appium controls navigation for this module. Install and start its container:
+
+```sh
+docker compose build appium
+docker compose up -d --wait appium
+```
+
+For later runs, only the second command is needed. If port 4723 is already in
+use, see [Appium configuration](../docs/DOCKER.md#appium-configuration).
+
+### 3. Create the queue once
+
+```sh
+docker compose run --rm -v "$PWD/private/config:/generated" collector \
+  configure-version --container --serial "$DEVICE_SERIAL" --csv /input/apps.csv \
+  --output /generated/version.json
+docker compose run --rm version --config /config/version.json init
+```
+
+This saves configuration in `private/config/version.json` and initializes local
+state. It preserves the source CSV. For later runs, keep those files and skip
+this step; configuration generation refuses to overwrite existing settings.
+
+### 4. Check the phone and collect one app
+
+Keep WeChat open, then check the prerequisites:
+
+```sh
+docker compose run --rm version --config /config/version.json doctor
+```
+
+Continue only when `blockers` is empty:
+
+```sh
+docker compose run --rm version --config /config/version.json run --max-items 1
+docker compose run --rm version --config /config/version.json status
+```
+
+### 5. Read the results and continue
+
+Open **`collection_results/version/output/reports/`** for outcomes and
+**`collection_results/version/output/collections/`** for saved acquisitions.
+The working baseline is `collection_results/version/apps.csv`.
+
+Run the same `run` command again to process the next pending item. Increase
+`--max-items` for a larger batch; failed attempts also count toward this limit.
+A completed command can contain per-app failures, so inspect `status` or the reports.
+
+Press Ctrl-C once and wait for the checkpoint. When finished with this module:
+
+```sh
+docker compose stop appium
+```
+
+## Try without a phone
+
+After building the collector image:
 
 ```sh
 docker run --rm --network none minizoo-scraper:public example version
 ```
 
-Container results are temporary unless `/data` is mounted; see the
-[Docker example guide](../docs/DOCKER.md#immediate-examples).
+Expect `PASSED: version`. The synthetic example checks queue initialization,
+baseline preservation and reports without Appium or a phone. See
+[example output](../docs/DOCKER.md#immediate-examples) to keep its files.
 
-## Commands
+## Results, restart and limits
 
-```sh
-python3 minizoo.py version --help
-```
+Use one collector per phone and output directory. The version baseline advances
+only after a newer comparable version has verified identity, complete package
+coverage, intact artifacts and successful reconstruction. Partial acquisitions
+and missing metadata remain explicit. Keep the complete output tree at its
+original paths when resuming.
 
-For a container installation, use the independent `version` service in the
-[Docker guide](../docs/DOCKER.md).
+Ten consecutive distinct empty searches or a rate-limit response pause the queue.
+Respect the saved waiting period and inspect the phone before requesting `resume`.
+The `run` command never silently clears a pause.
 
-## Installation
+Use the same `--config /config/version.json` with these commands:
 
-Use the common Python environment and reconstruction dependency from the
-[main guide](../README.md#install-only-what-you-use). Live collection additionally
-needs Android Platform Tools, a JDK, Node.js 26+, an authorized rooted phone with
-WeChat logged in, and a matching Frida server. Install the pinned Appium server
-and Android driver:
+| Command | Purpose |
+| --- | --- |
+| `status` | Read queue progress and per-outcome counts. |
+| `report` | Write current JSON/CSV reports. |
+| `resume` | Clear an eligible pause or retry pending local processing. |
+| `retry --appids APPID` | Requeue selected outcomes while preserving previous attempts. |
+
+Stop acquisition before `report`, `resume` or `retry`. The [example configuration](config.example.json)
+describes pacing and adapter options. Unknown fields are rejected. `load_wait`
+controls the wait after opening an app; its default is 8 seconds.
+
+## Native usage
+
+Follow the [native installation](../docs/NATIVE.md), including reconstruction
+tools. Install a JDK and the pinned Appium dependencies:
 
 ```sh
 npm ci --prefix version_scraper --no-audit --no-fund
 ```
 
-For native macOS, install Xcode Command Line Tools and compile Apple Vision OCR:
+On macOS, install Xcode Command Line Tools and compile OCR:
 
 ```sh
 swiftc version_scraper/tools/ocr.swift -o version_scraper/tools/ocr
 ```
 
-For native Linux, install Tesseract with English and Simplified Chinese language
-data and `python3 -m pip install -r docker/requirements.txt`. The configuration
-generator chooses Tesseract on Linux and Vision on macOS; `--ocr` overrides it.
-[Docker](../docs/DOCKER.md) includes Tesseract, Python, Appium, the JDK and
-Android SDK. On macOS, only the USB ADB server stays on the host; Linux can
-run that server in Docker too. OCR selects controls; runtime evidence
-still determines whether a package can be accepted.
+On Linux, install Tesseract with English and Simplified Chinese language data,
+then `python3 -m pip install -r docker/requirements.txt`. Configuration generation
+selects the platform's OCR automatically.
 
-## Configure your input once
-
-Supply a UTF-8 CSV with `appid`, `name` and `previous_app_version`. The schema
-example at `version_scraper/examples/apps.csv` is synthetic and is not a live
-collection queue. Choose the phone serial from `adb devices -l`:
+With your CSV and selected phone, configure and initialize once:
 
 ```sh
-python3 minizoo.py configure-version \
-  --serial DEVICE_C --csv private/input/apps.csv
+python3 minizoo.py configure-version --serial "$DEVICE_SERIAL" --csv private/input/apps.csv
 python3 minizoo.py version --config private/config/version.json init
-python3 minizoo.py version --config private/config/version.json status
 ```
 
-Configuration generation counts rows, preserves the source and refuses to
-overwrite an existing config. `init` creates a working CSV and local SQLite
-state; neither `init` nor `status` contacts a phone. Results default to
-`collection_results/version/`. Use `--data-dir` and `--output` at configuration
-time for an independent trial. Relative paths in a manually edited config
-resolve from that config's folder, regardless of the launch folder.
-
-The [example config](config.example.json) documents pacing and adapter commands.
-Unknown configuration fields are rejected before collection starts.
-Each device needs a unique `name`, `udid` and Appium `system_port`; `account`
-groups devices sharing account-level pauses. Keep real settings under `private/`.
-`load_wait` is the delay in seconds after opening a mini app (default: 8). Raise
-it for slow first downloads. An app still downloading may have no verifiable
-package binding; retain the outcome and retry after loading completes.
-
-## Start one bounded acquisition
-
-Start Appium in a separate terminal:
-
-```sh
-./version_scraper/start_appium.sh
-```
-
-With the phone awake, unlocked and showing WeChat:
+Keep native and Docker configuration/output paths separate. Start
+`./version_scraper/start_appium.sh` in another terminal, then:
 
 ```sh
 python3 minizoo.py version --config private/config/version.json doctor
@@ -112,56 +149,5 @@ python3 minizoo.py version --config private/config/version.json run --max-items 
 python3 minizoo.py version --config private/config/version.json status
 ```
 
-`doctor` contacts the phone and Appium. `run` starts acquisition and resumes saved
-local processing first. The item limit includes failed attempts; omit it only
-when you intend to process the full queue. Use one active collector per phone
-and per output directory. Press Ctrl-C once and allow the checkpoint to finish.
-
-| Command | Purpose |
-| --- | --- |
-| `status` | Inspect local state. |
-| `report` | Write local JSON/CSV reports. |
-| `resume` | Deliberately clear an eligible persisted pause or retry processing. |
-| `retry --appids APPID` | Requeue selected outcomes, retaining older attempts. |
-| `probe` | Contact an idle phone and retain diagnostics. |
-
-Ten consecutive distinct empty searches pause collection; rate-limit responses
-stop it immediately. Counters and the minimum wait survive restart. `run` does
-not silently clear a pause. Interrupted searches stay pending without consuming
-the retry budget. Stop acquisition before `retry`, `resume` or `report`.
-
-Connection or worker failures return a nonzero exit code and retain a device
-report. A completed command can still contain per-app failures: inspect
-`status` or `report` before treating an acquisition as complete.
-
-## Local outputs and evidence
-
-```text
-collection_results/version/
-  apps.csv                          # Working baseline; original input preserved
-  output/
-    initial_manifest.json
-    state.sqlite3
-    checkpoints/
-    reports/
-    collections/<appid>/<attempt>/
-      manifest.json
-      packages/
-      evidence.json
-      package_metadata.json
-      processing.json
-      logs/
-```
-
-Public metadata and capture time are saved before decompilation. Missing fields
-remain explicit and do not invalidate original bytes. Verified reconstructed
-root manifests can provide a separately recorded, provenance-checked metadata
-fallback; they cannot invent release versions or acquisition dates. See the
-[metadata guide](../MiniZooCollectionCore/README.md#extract-metadata-from-a-saved-acquisition).
-
-A baseline advances only for a newer comparable runtime version with verified
-identity, complete package coverage and verified artifacts. Failed decompilation,
-partial coverage and ambiguous identity retain their files without becoming
-verified complete releases. Package hashes, saved manifests and reconstruction
-receipts are checked again when resuming. Preserve the complete output tree at
-its original paths; do not rewrite evidence to move checkpoints.
+Offline example: `python3 minizoo.py example version`.
+All commands: `python3 minizoo.py version --help`.
