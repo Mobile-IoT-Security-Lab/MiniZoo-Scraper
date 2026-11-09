@@ -3,6 +3,8 @@
 Collect WeChat Mini Programs and their metadata on a rooted Android phone.
 Save everything locally in `collection_results/`.
 
+Developed and tested with **WeChat 8.0.72 for Android**.
+
 ## 1. Install
 
 On **macOS or Linux**, install [Git](https://git-scm.com/downloads) and

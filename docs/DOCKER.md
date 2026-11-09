@@ -6,6 +6,8 @@ folders and run from the repository root on macOS or Linux.
 
 ## Connect phones
 
+MiniZoo was developed and tested with **WeChat 8.0.72 for Android**.
+
 You need an already rooted Android phone with USB debugging enabled and WeChat
 logged in. Keep it unlocked. Use one phone for each simultaneous collection role.
 
