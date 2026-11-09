@@ -1,0 +1,5 @@
+# Python >=3.10. Use Python 3.12 for the combined release.
+# The collection code uses the standard library; these packages provide its Frida CLI.
+# ADB and ADBKeyboard are external dependencies; see README.md.
+frida==17.18.0
+frida-tools==14.11.0

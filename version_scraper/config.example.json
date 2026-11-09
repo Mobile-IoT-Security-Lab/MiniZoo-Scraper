@@ -1,0 +1,72 @@
+{
+  "source_csv": "examples/apps.csv",
+  "work_csv": "../collection_results/version/apps.csv",
+  "output_dir": "../collection_results/version/output",
+  "expected_records": 1,
+  "version_column": "previous_app_version",
+  "version_kind": "integer",
+  "appium_url": "http://127.0.0.1:4723",
+  "ui_mode": "visual",
+  "devices": [
+    {
+      "name": "android1",
+      "udid": "REPLACE_WITH_ADB_SERIAL",
+      "system_port": 8201,
+      "account": "account1",
+      "enabled": true
+    }
+  ],
+  "request_gap": 5,
+  "between_apps": 10,
+  "load_wait": 8,
+  "selectors": {},
+  "evidence_command": [
+    "python3",
+    "{project_dir}/tools/runtime_evidence.py",
+    "--serial",
+    "{serial}",
+    "--appid",
+    "{appid}",
+    "--attempt-id",
+    "{attempt_id}",
+    "--packages-json",
+    "{packages_json}",
+    "--collection-dir",
+    "{collection_dir}",
+    "--output",
+    "{output}",
+    "--frida",
+    "frida"
+  ],
+  "decompiler_command": [
+    "python3",
+    "{project_dir}/tools/decompile_wxapkg.py",
+    "--package",
+    "{package}",
+    "--output",
+    "{output}",
+    "--main-dir",
+    "{main_output}",
+    "--tool-root",
+    "{project_dir}/vendor/wxappUnpacker"
+  ],
+  "ocr_command": [
+    "{project_dir}/tools/ocr"
+  ],
+  "search_metadata_command": [
+    "python3",
+    "{project_dir}/tools/search_metadata.py",
+    "--serial",
+    "{serial}",
+    "--appid",
+    "{appid}",
+    "--attempt-id",
+    "{attempt_id}",
+    "--output",
+    "{output}",
+    "--frida",
+    "frida"
+  ],
+  "rate_limit_cooldown": 900,
+  "empty_search_limit": 10
+}

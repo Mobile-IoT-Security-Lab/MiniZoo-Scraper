@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "Please cite this software when using the collection tools. The associated preprint is in preparation."
+type: software
+title: "MiniZoo Scraper"
+license: MIT
+authors:
+  - given-names: Luca
+    family-names: Ferrari
+  - given-names: Marco
+    family-names: Alecci
+  - given-names: Jordan
+    family-names: Samhi
+  - given-names: "Tegawendé F."
+    family-names: "Bissyandé"
+  - given-names: Jacques
+    family-names: Klein
+  - given-names: Luca
+    family-names: Verderame

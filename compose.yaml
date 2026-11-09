@@ -1,0 +1,70 @@
+x-config-mount: &config-mount
+  type: bind
+  source: ${WECHAT_CONFIG_DIR:-./private/config}
+  target: /config
+  read_only: true
+  bind:
+    create_host_path: false
+x-input-mount: &input-mount
+  type: bind
+  source: ${WECHAT_INPUT_DIR:-./private/input}
+  target: /input
+  read_only: true
+  bind:
+    create_host_path: false
+x-data-mount: &data-mount
+  type: bind
+  source: ${WECHAT_DATA_DIR:-./collection_results}
+  target: /data
+  bind:
+    create_host_path: false
+x-runtime: &runtime
+  image: minizoo-scraper:public
+  build: .
+  # Native host ADB owns USB/Frida tunnels; native Appium owns UI sessions.
+  # Docker Desktop needs Settings > Resources > Network > Enable host networking.
+  network_mode: host
+  init: true
+  user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+  mem_limit: 2g
+  cpus: 2.0
+  environment:
+    ADB_SERVER_SOCKET: tcp:127.0.0.1:5037
+    WECHAT_DATA_DIR: /data/initial
+    MINIZOO_DATA_DIR: /data
+    MINICRAWLER_SOURCE: /opt/minicrawler
+    WECHAT_STATE_DIR: /data/automation
+  volumes:
+    - *config-mount
+    - *input-mount
+    - *data-mount
+  stop_grace_period: 2m
+
+services:
+  discovery:
+    <<: *runtime
+    entrypoint: ["python3", "/opt/wechat/docker/discovery.py"]
+    command: ["--help"]
+    volumes:
+      - *config-mount
+      - *input-mount
+      - *data-mount
+      - type: bind
+        source: ${MINICRAWLER_DIR:-./scraper/MiniCrawler}
+        target: /opt/minicrawler
+        read_only: true
+        bind:
+          create_host_path: false
+  collection:
+    <<: *runtime
+    entrypoint: ["python3", "/opt/wechat/scraper/wechat_csv_scraper.py"]
+    command: ["--help"]
+  version:
+    <<: *runtime
+    entrypoint: ["python3", "/opt/wechat/version_scraper/main.py"]
+    command: ["--help"]
+  # Compatibility/tool shell, selected explicitly by `docker compose run collector ...`.
+  collector:
+    <<: *runtime
+    profiles: ["tools"]
+    command: ["help"]

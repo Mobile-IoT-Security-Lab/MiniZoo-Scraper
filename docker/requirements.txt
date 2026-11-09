@@ -1,0 +1,2 @@
+# Optional Linux OCR image preprocessing; native Apple Vision does not use it.
+Pillow==13.0.0

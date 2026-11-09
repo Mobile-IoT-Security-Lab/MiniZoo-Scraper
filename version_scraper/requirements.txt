@@ -1,0 +1,4 @@
+# The collector itself uses the Python standard library.
+# These packages provide the external Frida CLI.
+frida==17.18.0
+frida-tools==14.11.0

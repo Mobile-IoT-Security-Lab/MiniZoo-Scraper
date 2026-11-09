@@ -1,0 +1,8 @@
+{
+  "name": "minizoo-scraper",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Appium server and Android driver for the Python collector",
+  "engines": {"node": "^22.22.2 || ^24.15.0 || >=26.0.0", "npm": ">=10"},
+  "devDependencies": {"appium": "3.9.0", "appium-uiautomator2-driver": "8.7.3"}
+}
