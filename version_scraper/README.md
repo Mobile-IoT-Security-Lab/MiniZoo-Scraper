@@ -61,6 +61,7 @@ time for an independent trial. Relative paths in a manually edited config
 resolve from that config's folder, regardless of the launch folder.
 
 The [example config](config.example.json) documents pacing and adapter commands.
+Unknown configuration fields are rejected before collection starts.
 Each device needs a unique `name`, `udid` and Appium `system_port`; `account`
 groups devices sharing account-level pauses. Keep real settings under `private/`.
 `load_wait` is the delay in seconds after opening a mini app (default: 8). Raise

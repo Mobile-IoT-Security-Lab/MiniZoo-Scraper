@@ -5,11 +5,8 @@
 Collection tools for WeChat Mini Programs: discover apps, acquire their original
 `.wxapkg` packages and revisit apps for newer versions. Each module runs independently.
 
-Results are saved inside `collection_results/`. This software repository is
-separate from the curated dataset described in the paper; corpus access is
-explained on the [MiniZoo website](https://androzoo.uni.lu/minizoo).
-Dataset hosting, publication and scheduling are managed separately. This release
-contains no Google Drive uploader, collected corpus or personal configuration.
+Results are saved inside `collection_results/`. Keep configuration and input
+files under `private/`. Both directories stay outside the tracked source.
 
 ## Quick start with Docker
 
@@ -28,7 +25,7 @@ the separate Appium service; discovery needs its pinned external adapter.
 
 ## Choose a module
 
-| Module from the paper | Native command | Docker command | Guide |
+| Module | Native command | Docker command | Guide |
 | --- | --- | --- | --- |
 | Mini App Discovery | `python3 minizoo.py discovery` | `docker compose run --rm discovery` | [Discovery guide](discovery/README.md) |
 | Mini App Crawler | `python3 minizoo.py collection` | `docker compose run --rm collection` | [Initial collection guide](scraper/README.md) |
@@ -94,5 +91,4 @@ per-app outcomes. See the selected module's guide for recovery and platform limi
 
 Project-authored code is [MIT licensed](LICENSE). External dependencies and
 mini-app packages retain their own rights; see [provenance](docs/PROVENANCE.md).
-Cite the software using [CITATION.cff](CITATION.cff). The associated paper is in
-preparation; no publication identifier is assigned here.
+Cite the software using [CITATION.cff](CITATION.cff).

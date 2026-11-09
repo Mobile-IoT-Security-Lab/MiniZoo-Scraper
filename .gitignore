@@ -8,7 +8,7 @@ config.local.json
 .env
 .env.*
 !.env.example
-rclone.conf
+*.conf
 *credentials*
 *client_secret*
 *service_account*

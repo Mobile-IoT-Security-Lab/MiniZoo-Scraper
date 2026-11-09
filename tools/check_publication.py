@@ -16,17 +16,17 @@ PRIVATE_DIRS = {'private', 'data', 'output', 'outputs', 'reports', 'screenshots'
 DATA_SUFFIXES = {'.csv', '.tsv', '.jsonl', '.ndjson', '.xlsx', '.xls', '.wxapkg',
                  '.apk', '.db', '.sqlite', '.sqlite3', '.log', '.zip', '.bundle', '.tar',
                  '.gz', '.tgz', '.7z', '.pem', '.key', '.p12', '.pfx', '.keystore',
-                 '.jks', '.png', '.jpg', '.jpeg', '.webp', '.mp4', '.pyc'}
+                 '.jks', '.png', '.jpg', '.jpeg', '.webp', '.mp4', '.pyc', '.conf'}
 ALLOWED_DATA = {'version_scraper/examples/apps.csv', 'docs/images/mini-app-workflow.png'}
 ALLOWED_JSON = {'version_scraper/config.example.json', 'version_scraper/package.json',
                 'version_scraper/package-lock.json'}
-PRIVATE_NAMES = {'config.json', 'config.local.json', 'rclone.conf', '.npmrc', '.pypirc',
+PRIVATE_NAMES = {'config.json', 'config.local.json', '.npmrc', '.pypirc',
                  '.netrc', '.DS_Store', 'minizoo_core_path.txt'}
 URL = re.compile(r'\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s<>"\']+')
 HOME_PATH = re.compile(r'/(?:Users|home)/([^/\s<>"\']+)')
 VOLUME_PATH = re.compile(r'/(?:Volumes)/([^/\r\n<>"\']+)')
 PLACEHOLDERS = {'user', 'you', 'username', 'yourname', 'your_user', 'your_username',
-                'your_volume', 'your_drive', 'example', 'collector', 'runner',
+                'your_volume', 'your_disk', 'example', 'collector', 'runner',
                 'volume', 'external', 'data', '$user', '${user}'}
 RULES = {
     'private-key': re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----'),
@@ -36,8 +36,8 @@ RULES = {
     'oauth-refresh-token': re.compile(r'\b1//[A-Za-z0-9_-]{20,}'),
     'credential-url': re.compile(r'https?://[^\s/:"\'<>]+:[^\s/@"\'<>]+@[^\s/"\'<>]+'),
     'device-serial': re.compile(r'\b[0-9]{5}[A-Z]{4}[0-9]{5}\b'),
-    'drive-folder-id': re.compile(r'drive\.google\.com/drive/folders/[A-Za-z0-9_-]{20,}'),
-    'literal-drive-config': re.compile(r'''["']?(?:drive_root_id|drive_parent_id|catalog_drive_parent_id)["']?\s*[:=]\s*["'][A-Za-z0-9_-]{20,}["']'''),
+    'private-folder-url': re.compile(r"(?:https?://)?[A-Za-z0-9.-]+(?:/[A-Za-z0-9._~-]+)*/folders/[A-Za-z0-9_-]{20,}"),
+    'literal-resource-id': re.compile(r'''["']?(?:[A-Za-z_][A-Za-z0-9_]*_)?(?:root|parent|folder)_id["']?\s*[:=]\s*["'][A-Za-z0-9_-]{20,}["']'''),
 }
 PERSONAL_EMAIL_DOMAINS = {'gmail.com', 'googlemail.com', 'hotmail.com', 'outlook.com',
                           'live.com', 'yahoo.com', 'icloud.com', 'proton.me', 'protonmail.com'}

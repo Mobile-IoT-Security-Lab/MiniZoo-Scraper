@@ -631,8 +631,8 @@ def collect_runtime(probe, attempt_id, collection_dir, *, expected_appid=None,
                     capture_fn=None, cache_fn=None, pid=None):
     """One policy for both queues: collect every corroborated, available component.
 
-    Only runtime-bound main/subpackages enter the evidence. No numerical package
-    cap, navigation, cache deletion, upload, or baseline update is performed.
+    Save runtime-bound main/subpackages and their evidence locally.
+    Navigation and baseline updates are handled by the calling collector.
     """
     root = Path(collection_dir).absolute()
     root.mkdir(parents=True, exist_ok=True)

@@ -58,7 +58,7 @@ Private settings, keys and collected data are excluded from Git and the Docker
 build context. Missing bind-mount sources cause an error. Collection services run
 as the configured user with two CPUs and 2 GiB RAM each. Removing a container
 preserves the host output folder. Appium uses its own unprivileged user and does
-not mount your inputs or results. No service installs a scheduler or uploads data.
+not mount your inputs or results. Services start only when explicitly requested.
 
 ## Connect phones
 

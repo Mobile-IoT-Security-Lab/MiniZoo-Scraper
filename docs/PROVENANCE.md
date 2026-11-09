@@ -61,5 +61,4 @@ grant rights over a collected corpus.
 
 Prerequisites are documented in the collector guides and [Docker guide](DOCKER.md).
 The Appium image installs the Google Android SDK under its own license; the
-Docker build accepts the SDK licenses. No arXiv identifier, DOI or publication
-status is assigned here.
+Docker build accepts the SDK licenses.

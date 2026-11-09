@@ -28,10 +28,19 @@ from search_hints import load_search_hints, supported_absence, valid_query
 
 def load_config(path):
     config = json.loads(Path(path).read_text(encoding="utf-8"))
-    unsupported = sorted(key for key in config if key.startswith(("drive_", "upload_", "rclone_")))
+    supported = {
+        "adb", "appium_url", "between_apps", "decompiler_command", "devices",
+        "empty_search_limit", "encoding", "evidence_command", "expected_records",
+        "load_wait", "ocr_command", "output_dir", "pacing", "rate_limit_cooldown",
+        "request_gap", "search_hints_file", "search_metadata_command", "selectors",
+        "source_csv", "ui_mode", "version_column", "version_kind",
+        "version_metadata_columns", "volume_mount", "volume_uuid", "work_csv",
+    }
+    if not isinstance(config, dict):
+        raise ValueError("Configuration must be a JSON object")
+    unsupported = sorted(set(config) - supported)
     if unsupported:
-        raise ValueError("This release collects locally; remove unsupported cloud settings: "
-                         + ", ".join(unsupported))
+        raise ValueError("Unsupported configuration fields: " + ", ".join(unsupported))
     # Adapters can run from an output directory, so resolve repository paths first.
     # Leave runtime substitution tokens (such as {wxapkg}) intact.
     project_dir = str(Path(__file__).resolve().parent)
@@ -723,7 +732,7 @@ class Runner:
                     "packages_json": package_list, "collection_dir": path.parent}, path.parent / "logs" / "evidence.log")
                 manifest["packages"] = read_package_list(package_list)
                 # Actual package-copy completion, before parsing, rather than
-                # the search start or a later upload/decompilation timestamp.
+                # the search start or a later processing timestamp.
                 manifest["captured_at"] = now()
                 write_json(path, manifest)
                 return self.local(task, path)
