@@ -5,6 +5,33 @@ original packages and evidence locally. Navigation uses ADB and ADBKeyboard.
 This module does not require Appium, the discovery module or a versioning queue.
 Run the following commands from the repository root.
 
+## Immediate example
+
+From the repository root, with Python 3.12+:
+
+```sh
+python3 minizoo.py example collection
+```
+
+Runs the collector with `--prepare-only --open-method search` on the bundled
+synthetic CSV. Checks one `prepared` manifest row, preserved search input and
+empty acquired-package fields. It prepares a search without contacting a phone
+or an HTTP source; package capture is covered by the bounded phone run below.
+
+No dependency installation, phone, credentials or network is required. The
+command prints `PASSED: collection` and saves results plus `result.json` under a
+new `collection_results/examples/collection-*/` folder. A failed check exits with
+code 1. Repeated runs keep earlier results.
+
+After building the shared Docker image, the same example runs independently:
+
+```sh
+docker run --rm --network none minizoo-scraper:public example collection
+```
+
+Container results are temporary unless `/data` is mounted; see the
+[Docker example guide](../docs/DOCKER.md#immediate-examples).
+
 ## Commands
 
 ```sh

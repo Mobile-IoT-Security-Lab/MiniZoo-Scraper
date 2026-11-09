@@ -5,6 +5,34 @@ against a working CSV. Appium navigates, ADB reads the cache and Frida verifies
 identity. This module has its own configuration and checkpoints; it does not
 launch discovery or initial collection. Run commands from the repository root.
 
+## Immediate example
+
+From the repository root, with Python 3.12+:
+
+```sh
+python3 minizoo.py example version
+```
+
+Generates local configuration for the bundled synthetic CSV, initializes the
+queue twice, then reads status and writes a report. Checks that exactly one item
+remains pending and that the input and baseline bytes are unchanged. The
+placeholder device is never contacted; Appium navigation and version acquisition
+require the bounded phone run below.
+
+No dependency installation, phone, credentials or network is required. The
+command prints `PASSED: version` and saves results plus `result.json` under a
+new `collection_results/examples/version-*/` folder. A failed check exits with
+code 1. Repeated runs keep earlier results.
+
+After building the shared Docker image, the same example runs independently:
+
+```sh
+docker run --rm --network none minizoo-scraper:public example version
+```
+
+Container results are temporary unless `/data` is mounted; see the
+[Docker example guide](../docs/DOCKER.md#immediate-examples).
+
 ## Commands
 
 ```sh

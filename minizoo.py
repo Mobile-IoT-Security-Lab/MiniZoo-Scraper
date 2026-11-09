@@ -6,6 +6,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parent
 COMMANDS = {
+    "example": ("tools/run_examples.py", "Run checked offline examples with synthetic inputs"),
     "discovery": ("discovery/main.py", "Search and checkpoint AppIDs"),
     "collection": ("scraper/wechat_csv_scraper.py", "Collect packages from a CSV"),
     "version": ("version_scraper/main.py", "Revisit AppIDs and compare versions"),

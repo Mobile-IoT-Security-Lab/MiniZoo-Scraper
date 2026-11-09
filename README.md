@@ -10,18 +10,44 @@ files under `private/`. Both directories stay outside the tracked source.
 
 ## Quick start with Docker
 
-From the repository root, build the shared collector image and check its commands:
+From the repository root, build the shared collector image and run all examples:
 
 ```sh
 docker compose build collection
-docker run --rm --network none minizoo-scraper:public --help
+docker run --rm --network none minizoo-scraper:public example all
 ```
 
-This opens help without contacting a phone. For live collection, follow the
+Each example checks its output and prints `PASSED` or `FAILED`. For live collection, follow the
 [Docker guide](docs/DOCKER.md) to connect an authorized rooted Android phone,
 prepare local inputs and select one of the modules below. WeChat must be logged
 in and the phone must run a matching Frida server. Version collection also uses
 the separate Appium service; discovery needs its pinned external adapter.
+
+## Immediate examples
+
+With Python 3.12+, run all four examples without installing dependencies:
+
+```sh
+python3 minizoo.py example all
+```
+
+Or select one independently:
+
+| Example | Command | What it checks |
+| --- | --- | --- |
+| Discovery | `python3 minizoo.py example discovery` | SQLite catalogue, sparse metadata updates and CSV export. |
+| Initial collection | `python3 minizoo.py example collection` | CSV preparation, manifest and separation of search input from observed identity. |
+| Version collection | `python3 minizoo.py example version` | Configuration, repeatable queue initialization, baseline preservation and reports. |
+| Shared core | `python3 minizoo.py example core` | Synthetic package parsing, metadata evidence and byte integrity. |
+
+Examples use synthetic inputs, run without a phone or network, and save separate
+results under `collection_results/examples/`. Each run gets a new folder and a
+`result.json`; any failed check returns a nonzero exit code. Use
+`--output NEW_DIRECTORY` to choose a new result location. Docker saves results
+under `/data`; [mount that folder](docs/DOCKER.md#immediate-examples) to keep them.
+
+These examples verify the local stages described above. Live acquisition needs
+the phone setup and bounded run in each module's guide.
 
 ## Choose a module
 

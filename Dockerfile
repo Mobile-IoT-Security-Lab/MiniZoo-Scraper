@@ -32,6 +32,7 @@ COPY docker/requirements.txt /tmp/docker-requirements.txt
 RUN pip install --requirement /tmp/docker-requirements.txt
 
 WORKDIR /opt/wechat
+ENV MINIZOO_DATA_DIR=/data
 COPY LICENSE README.md CITATION.cff minizoo.py ./
 COPY docs ./docs
 COPY MiniZooCollectionCore ./MiniZooCollectionCore

@@ -7,6 +7,33 @@ can also be processed independently, without connecting a phone.
 Run all commands below from the repository root and replace the example paths
 with your own files.
 
+## Immediate example
+
+From the repository root, with Python 3.12+:
+
+```sh
+python3 minizoo.py example core
+```
+
+Creates a tiny synthetic plaintext `.wxapkg` and runs the package inspector.
+Checks the package index, declared AppID, static metadata evidence and SHA-256,
+and confirms that inspection preserves the original bytes. Reconstruction and
+metadata extraction from a real acquisition use the separate commands below.
+
+No dependency installation, phone, credentials or network is required. The
+command prints `PASSED: core` and saves results plus `result.json` under a
+new `collection_results/examples/core-*/` folder. A failed check exits with
+code 1. Repeated runs keep earlier results.
+
+After building the shared Docker image, the same example runs independently:
+
+```sh
+docker run --rm --network none minizoo-scraper:public example core
+```
+
+Container results are temporary unless `/data` is mounted; see the
+[Docker example guide](../docs/DOCKER.md#immediate-examples).
+
 ## Setup
 
 For native execution, follow the [Python setup](../README.md#install-only-what-you-use).

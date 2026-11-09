@@ -4,6 +4,34 @@ Find WeChat AppIDs and public metadata from keywords. This module has its own
 SQLite queue and page checkpoints. It does not start either package collector.
 All commands below run from the repository root.
 
+## Immediate example
+
+From the repository root, with Python 3.12+:
+
+```sh
+python3 minizoo.py example discovery
+```
+
+Writes one synthetic AppID to SQLite, repeats a sparse metadata update and exports
+`catalog.csv`. Checks that the AppID is not duplicated, earlier metadata is kept
+and absent categories stay empty. This exercises catalogue persistence after
+response parsing; live query parsing and phone navigation require the adapter
+and the bounded phone run below.
+
+No dependency installation, phone, credentials or network is required. The
+command prints `PASSED: discovery` and saves results plus `result.json` under a
+new `collection_results/examples/discovery-*/` folder. A failed check exits with
+code 1. Repeated runs keep earlier results.
+
+After building the shared Docker image, the same example runs independently:
+
+```sh
+docker run --rm --network none minizoo-scraper:public example discovery
+```
+
+Container results are temporary unless `/data` is mounted; see the
+[Docker example guide](../docs/DOCKER.md#immediate-examples).
+
 ## Commands
 
 ```sh

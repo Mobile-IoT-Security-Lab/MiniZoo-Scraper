@@ -35,6 +35,33 @@ python3 tools/fetch_discovery_source.py
 Its source hashes are checked against the pinned revision. Other modules do not
 require it. See [provenance](PROVENANCE.md) for dependency licenses and notices.
 
+## Immediate examples
+
+After building `collection`, run the checked examples without phones, settings
+or network access:
+
+```sh
+docker run --rm --network none minizoo-scraper:public example all
+```
+
+Replace `all` with `discovery`, `collection`, `version` or `core` to run one.
+Each prints `PASSED` or `FAILED`, checks its synthetic outputs and returns a
+nonzero exit code if a check fails. See the [example table](../README.md#immediate-examples)
+for the covered stages. Live acquisition requires the setup below.
+
+The command above stores temporary results inside the container. To keep the
+artifacts and `result.json` inside the project:
+
+```sh
+mkdir -p collection_results
+docker run --rm --network none --user "$(id -u):$(id -g)" \
+  --mount "type=bind,src=$(pwd)/collection_results,dst=/data" \
+  minizoo-scraper:public example all
+```
+
+Results appear in a new `collection_results/examples/all-*/` folder. These
+examples do not need the live discovery adapter, Appium, Frida or USB access.
+
 ## Local files and configuration
 
 ```sh
