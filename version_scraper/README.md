@@ -1,4 +1,4 @@
-# Mini App Version Collector
+# Mini App Version Crawler
 
 Revisit known AppIDs, retain packages and runtime evidence, and compare versions
 against a working CSV. Appium navigates, ADB reads the cache and Frida verifies

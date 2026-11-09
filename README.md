@@ -2,56 +2,57 @@
 
 ![Mini-app discovery, collection and version workflow](docs/images/mini-app-workflow.png)
 
-Collect WeChat Mini Programs and their original `.wxapkg` packages into
-`collection_results/` inside this project. Each module runs independently.
-The public release saves locally and contains no Google Drive uploader.
+Collection tools for WeChat Mini Programs: discover apps, acquire their original
+`.wxapkg` packages and revisit apps for newer versions. Each module runs independently.
 
-## Start with Docker
+Results are saved inside `collection_results/`. This software repository is
+separate from the curated dataset described in the paper; corpus access is
+explained on the [MiniZoo website](https://androzoo.uni.lu/minizoo).
+Dataset hosting, publication and scheduling are managed separately. This release
+contains no Google Drive uploader, collected corpus or personal configuration.
 
-Docker supplies Python, Frida, OCR and reconstruction tools. A separate Appium
-container supplies the navigation server, JDK and Android SDK for versioning.
-From the repository root:
+## Quick start with Docker
+
+From the repository root, build the shared collector image and check its commands:
 
 ```sh
-docker compose build collection appium
+docker compose build collection
 docker run --rm --network none minizoo-scraper:public --help
-mkdir -p private/config private/input collection_results
-cp docker/env.example .env
 ```
 
-If `.env` already exists, edit it instead of replacing it. Set `LOCAL_UID` and
-`LOCAL_GID` to your `id -u` and `id -g`. The [Docker guide](docs/DOCKER.md) covers
-phone setup, independent module commands and persistent local results.
+This opens help without contacting a phone. For live collection, follow the
+[Docker guide](docs/DOCKER.md) to connect an authorized rooted Android phone,
+prepare local inputs and select one of the modules below. WeChat must be logged
+in and the phone must run a matching Frida server. Version collection also uses
+the separate Appium service; discovery needs its pinned external adapter.
 
-On macOS, Docker Desktop uses the host ADB server for the USB connection. On
-Linux, the optional `compose.linux-usb.yaml` also runs that server in Docker.
-WeChat and Frida's device-side server still run on your authorized Android phones.
-Starting a module without arguments prints help and does not start collection.
+## Choose a module
 
-## Independent modules
-
-| Module | Docker command | Native command | Guide |
+| Module from the paper | Native command | Docker command | Guide |
 | --- | --- | --- | --- |
-| Discovery | `docker compose run --rm discovery --help` | `python3 minizoo.py discovery` | [Discovery](discovery/README.md) |
-| Initial collection | `docker compose run --rm collection --help` | `python3 minizoo.py collection` | [Initial collector](scraper/README.md) |
-| Version collection | `docker compose run --rm version --help` | `python3 minizoo.py version` | [Version collector](version_scraper/README.md) |
-| Package inspection | `docker compose run --rm collector inspect --help` | `python3 minizoo.py inspect` | [Shared core](MiniZooCollectionCore/README.md) |
-| Reconstruction | `docker compose run --rm collector decompile --help` | `python3 minizoo.py decompile` | [Shared core](MiniZooCollectionCore/README.md) |
-| Metadata | `docker compose run --rm collector metadata --help` | `python3 minizoo.py metadata` | [Metadata](scraper/README_package_metadata.md) |
+| Mini App Discovery | `python3 minizoo.py discovery` | `docker compose run --rm discovery` | [Discovery guide](discovery/README.md) |
+| Mini App Crawler | `python3 minizoo.py collection` | `docker compose run --rm collection` | [Initial collection guide](scraper/README.md) |
+| Mini App Version Crawler | `python3 minizoo.py version` | `docker compose run --rm version` | [Version collection guide](version_scraper/README.md) |
 
-Run commands from the repository root. Discovery additionally mounts its pinned
-external adapter as explained in its guide. It is optional when you already have
-a catalogue. Initial collection does not require Appium. Version collection uses
-Appium but does not start discovery or initial collection. Processing saved
-packages needs no phone. Each module has its own input, output and checkpoints.
+As shown, these commands display help. Use a separate phone
+and output directory for simultaneous roles. Optional batch collection and local
+consolidation are described in the [batch guide](scraper/automation/README.md).
 
-The collectors share identity checks, package acquisition, metadata extraction
-and reconstruction; navigation and queues remain independent. Optional multi-phone
-batches are described in the [automation guide](scraper/automation/README.md).
+Saved packages can be processed without a phone:
+
+```sh
+python3 minizoo.py inspect /absolute/package.wxapkg
+python3 minizoo.py decompile --help
+python3 minizoo.py metadata --help
+```
+
+For Docker, use `docker compose run --rm collector COMMAND` and paths under
+`/data/`. The [shared core guide](MiniZooCollectionCore/README.md) describes these
+processing stages and their output formats.
 
 ## Install only what you use
 
-For native execution instead of Docker, create one environment at the root:
+For native execution, create the shared Python environment:
 
 ```sh
 python3.12 -m venv .venv
@@ -60,71 +61,38 @@ python3 -m pip install -r requirements.txt
 python3 minizoo.py --help
 ```
 
-Live modules require Android Platform Tools, an authorized rooted Android phone
-with WeChat logged in, and matching Frida client/server versions. Follow the
-module guide for its specific prerequisites: the discovery adapter, ADBKeyboard,
-or Appium and OCR. Use a separate phone and state directory for simultaneous roles.
-
-For native reconstruction, install Node.js 26+ and the pinned tool:
+Live collection requires Android Platform Tools and the phone prerequisites
+above. Follow the selected module's guide for keyboard, Appium or OCR setup.
+For native reconstruction, install Node.js 26+ and the pinned unpacker:
 
 ```sh
 git submodule update --init version_scraper/vendor/wxappUnpacker
 npm ci --prefix version_scraper/vendor/wxappUnpacker --ignore-scripts --no-audit --no-fund
 ```
 
-Docker already includes the reconstruction dependency. Discovery installs its
-external adapter separately. Source ZIP downloads do not contain submodules;
-use the revisions in [provenance](docs/PROVENANCE.md).
+Docker includes the reconstruction dependency. Source ZIPs omit submodules;
+see [dependency provenance](docs/PROVENANCE.md) for the required revision.
 
-## Project layout and local results
+## Local data and evidence
 
-```text
-minizoo.py                      # Common launcher
-discovery/                      # Discovery and optional external adapter
-scraper/                        # Initial collection and optional batches
-version_scraper/                # Version collection and navigation adapters
-MiniZooCollectionCore/          # Shared acquisition and processing engine
-tools/                         # Config generator, adapter installer and publication guard
-docker/                        # Collector and Appium container setup
-compose.yaml                   # Independently started services
-compose.linux-usb.yaml          # Optional Linux USB server
-private/                       # Your configs, inputs and keys; ignored by Git
-collection_results/            # Default outputs; ignored by Git
-  discovery/                   # SQLite query queue and catalog.csv
-  initial/                     # Acquisitions, evidence and consolidation
-  version/                     # Working CSV, packages, SQLite and checkpoints
-  automation/                  # Optional supervisor state
-```
+Keep settings, input catalogues and keys in `private/`; outputs go to
+`collection_results/`. Both folders are excluded from Git and Docker builds.
+The bundled example CSV is synthetic. Before publishing source changes, run
+`python3 tools/check_publication.py`; GitHub also checks for exposed secrets.
 
-Inputs, configurations, acquired packages, device identifiers, screenshots and
-logs stay outside the tracked source and Docker build context. Do not force-add
-them. The bundled example CSV is synthetic. Before publication, run
-`python3 tools/check_publication.py` to check the staged files and public source.
-The GitHub publication workflow also scans source and reachable history for secrets.
+Package ownership is checked against the observed AppID. Consolidation verifies
+bytes and deduplicates AppID/SHA-256 pairs. Multiple hashes alone do not establish
+multiple versions. A version baseline advances only after identity, version,
+complete coverage, file integrity and decompilation checks pass.
 
-Configuration generation never overwrites an existing file. Version paths are
-resolved from the config file's folder; explicit CLI paths keep the caller's
-working directory. Preserve existing output paths when resuming saved evidence.
-A module does not automatically launch another module or schedule later runs.
-
-## Evidence and metadata
-
-Runtime identity and checksums must corroborate package ownership. Multiple hashes
-do not by themselves prove multiple versions. A version baseline advances only
-after identity, version, complete coverage and artifact checks pass.
-
-Public metadata is saved before decompilation. Missing values remain explicit;
-search keywords are not categories and export times are not acquisition times.
-Static app declarations are a separate, provenance-checked fallback. Partial
-acquisitions and reconstruction failures preserve valid original bytes. See the
-[core policy](MiniZooCollectionCore/README.md#recovering-missing-metadata) and
-[interrupted-run recovery](scraper/README.md#recovering-an-interrupted-run).
-
-
+Available metadata and acquisition evidence are retained with the packages;
+missing fields remain explicit. Partial acquisitions and failed reconstruction
+preserve original bytes. Keep the complete output tree when resuming and inspect
+per-app outcomes. See the selected module's guide for recovery and platform limits.
 
 ## License and citation
 
-Project-authored code uses the [MIT License](LICENSE). External components and
+Project-authored code is [MIT licensed](LICENSE). External dependencies and
 mini-app packages retain their own rights; see [provenance](docs/PROVENANCE.md).
-Author credit is in [CITATION.cff](CITATION.cff). The associated preprint is in
-preparation; no arXiv identifier is assigned here.
+Cite the software using [CITATION.cff](CITATION.cff). The associated paper is in
+preparation; no publication identifier is assigned here.

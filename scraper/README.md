@@ -1,4 +1,4 @@
-# Initial Mini App Collector
+# Mini App Crawler
 
 Open names from a CSV, identify the Mini Program actually opened, and retain its
 original packages and evidence locally. Navigation uses ADB and ADBKeyboard.
