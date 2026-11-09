@@ -128,7 +128,7 @@ Public metadata and capture time are saved before decompilation. Missing fields
 remain explicit and do not invalidate original bytes. Verified reconstructed
 root manifests can provide a separately recorded, provenance-checked metadata
 fallback; they cannot invent release versions or acquisition dates. See the
-[metadata policy](../MiniZooCollectionCore/README.md#recovering-missing-metadata).
+[metadata guide](../MiniZooCollectionCore/README.md#extract-metadata-from-a-saved-acquisition).
 
 A baseline advances only for a newer comparable runtime version with verified
 identity, complete package coverage and verified artifacts. Failed decompilation,
