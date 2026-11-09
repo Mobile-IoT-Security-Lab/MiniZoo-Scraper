@@ -1,5 +1,7 @@
 # MiniZoo Scraper
 
+![Mini-app discovery, initial collection, consolidation and version revisit workflow](docs/images/mini-app-workflow.png)
+
 Collect WeChat Mini Programs and their original `.wxapkg` packages into
 `collection_results/` inside this project. The public release contains local
 collection and verification tools only. It has no Google Drive uploader, cloud

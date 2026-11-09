@@ -9,6 +9,8 @@
 !docs/
 !docs/DOCKER.md
 !docs/PROVENANCE.md
+!docs/images/
+!docs/images/mini-app-workflow.png
 !MiniZooCollectionCore/
 !MiniZooCollectionCore/README.md
 !MiniZooCollectionCore/minizoo_collection/

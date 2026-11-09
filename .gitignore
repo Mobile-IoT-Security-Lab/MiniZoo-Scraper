@@ -80,6 +80,9 @@ analysis_results/
 *.webp
 *.mp4
 
+# Public workflow illustration; acquired images remain private.
+!docs/images/mini-app-workflow.png
+
 # JSON files are private unless explicitly listed as distributable templates.
 *.json
 !version_scraper/config.example.json
