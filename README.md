@@ -52,6 +52,10 @@ already know the app's name. For simultaneous collection, use one phone per role
 | `collection_results/version/` | Version history, packages and checkpoints. |
 | `private/` | Your input files and settings. |
 
+A missing category can be filled as **Mini game** when a saved WeChat search
+result explicitly identifies the same AppID as a game. Specific service
+categories take precedence; see the [metadata guide](scraper/README_package_metadata.md#identifying-the-app-that-opened).
+
 These folders are excluded from Git. Press **Ctrl-C once** and wait for the
 collector to save its progress before disconnecting a phone.
 

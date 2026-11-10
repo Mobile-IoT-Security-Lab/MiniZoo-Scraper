@@ -56,6 +56,12 @@ path. Missing metadata is explicitly marked. For verification arguments:
 docker compose run --rm collector metadata verify --help
 ```
 
+Both collectors can fill a missing category as **Mini game** from an explicit
+native WeChat `isMinigame: 1` search result for the runtime-observed AppID.
+This is a broad platform classification. Existing service categories and
+conflicts take precedence. `evidence.json` records the fallback and a checksum
+of its saved source; verification replays it without contacting a phone.
+
 During collection, `package_metadata.json` and `package_metadata.csv` hold package
 metadata; `processing.json` records processing outcomes. Check these statuses
 before using an acquisition. Keep the complete folder for recovery and later

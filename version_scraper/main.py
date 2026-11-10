@@ -19,10 +19,11 @@ import zipfile
 
 import artifacts
 from minizoo_collection.processing import process_acquisition
+from minizoo_collection.public_metadata import search_record
 from phone import Phone, PhoneError, Pacer, RateLimit, Stopped, Suspended, ScreenUnavailable, request
 from store import FileLock, Store, now, read_csv_bytes, sha256, write_json, atomic_write
 from visual_phone import VisualPhone
-from search_observation import search_fields
+from search_observation import search_fields, category_record
 from search_hints import load_search_hints, supported_absence, valid_query
 
 
@@ -726,6 +727,12 @@ class Runner:
                 write_json(path, manifest)
                 package_list = path.parent / "packages.json"
                 write_json(package_list, manifest["packages"])
+                # Native search metadata enriches only the subsequently observed AppID.
+                sources = [category_record(manifest, path.parent)]
+                source_rows = getattr(self.store, "source_rows", [])
+                if 0 <= task["row_index"] < len(source_rows):
+                    sources.append(search_record(source_rows[task["row_index"]]))
+                write_json(path.parent / "search_metadata.json", [row for row in sources if row])
                 run_adapter(self.config["evidence_command"], {
                     "serial": phone.device["udid"], "appid": task["appid"],
                     "attempt_id": manifest["attempt_id"], "output": path.parent / "evidence.json",

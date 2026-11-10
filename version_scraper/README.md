@@ -85,6 +85,12 @@ coverage, intact artifacts and successful reconstruction. Partial acquisitions
 and missing metadata remain explicit. Keep the complete output tree at its
 original paths when resuming.
 
+When the runtime category is missing, the collector uses WeChat's explicit
+Mini Game flag from the matching search card or the input CSV's `raw_json`
+discovery record. Keep `appid` and `raw_json` when preparing that CSV. This
+fallback runs automatically, preserves an existing service category, and saves
+its source in `evidence.json` under `category_fallback`.
+
 Ten consecutive distinct empty searches or an explicit rate-limit response pause
 the queue. A generic “try again later” network message alone is not a rate limit.
 Respect the saved waiting period and inspect the phone before requesting `resume`.

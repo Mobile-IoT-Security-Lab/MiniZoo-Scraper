@@ -87,6 +87,8 @@
                           appId: typeof info.appId === 'string' ? info.appId.slice(0, 64) : null},
           title: title, title_source: publicTitle ? 'item.title' : 'header_first_visible_line',
           developer: clean(item.source && item.source.title),
+          native_search_item: {jumpInfo: {appID: info.appID, appId: info.appId},
+                               appID: item.appID, isMinigame: item.isMinigame},
           component_path: path, selector: '.account-header .header-detail[role="button"]',
           rect_css: rect, visible: visible, bound_to_open_weapp: bound,
           jump_type: info.jumpType, identity_conflict: conflict,

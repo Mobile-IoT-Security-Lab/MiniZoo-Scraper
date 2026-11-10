@@ -92,7 +92,14 @@ the executable using `--frida` or `WECHAT_FRIDA`.
 
 Available public fields come from the runtime and loaded `WxaAttributes` indexed
 by the observed AppID. These are on-device records, not a fresh server response.
-Absent or conflicting values remain unknown. `opened_app_evidence.json` preserves
+For a missing category, an exact-AppID native search record with integer
+`isMinigame: 1` supplies the broad label `Mini game`. The initial collector reads
+this record from the discovery CSV's `raw_json`; the version collector can also
+read its matching public search card. Search keywords, names and descriptions
+are not category evidence. A specific runtime category takes precedence, and
+conflicting observations remain unresolved. The fallback's source and original
+metadata status are saved in `evidence.json` and checked during offline replay.
+Other absent or conflicting values remain unknown. `opened_app_evidence.json` preserves
 the observations and their hashes; later stages repeat the checks before
 attributing content.
 

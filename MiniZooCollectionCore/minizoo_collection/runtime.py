@@ -628,7 +628,7 @@ def _inventory_signature(binding):
 
 
 def collect_runtime(probe, attempt_id, collection_dir, *, expected_appid=None,
-                    capture_fn=None, cache_fn=None, pid=None):
+                    capture_fn=None, cache_fn=None, pid=None, search_metadata=None):
     """One policy for both queues: collect every corroborated, available component.
 
     Save runtime-bound main/subpackages and their evidence locally.
@@ -654,7 +654,17 @@ def collect_runtime(probe, attempt_id, collection_dir, *, expected_appid=None,
         if final.get("public_metadata_schema") != public_metadata.SCHEMA:
             raise EvidenceError("Public metadata probe schema changed during acquisition")
         metadata, report = public_metadata.combine(binding, final)
+        # Save only bounded native records, not arbitrary columns from the input CSV.
+        search_metadata = ([record for row in search_metadata
+                            if (record := public_metadata.search_record(row))]
+                           if isinstance(search_metadata, list) and len(search_metadata) <= 64 else [])
+        metadata, report, fallback = public_metadata.apply_search_category(metadata, report, search_metadata)
         evidence["public_metadata_status"] = report
+        if fallback:
+            source = observations / "search_metadata.json"
+            write_json(source, search_metadata)
+            evidence["category_fallback"] = dict(fallback, observation={
+                "path": str(source.relative_to(root)), "sha256": artifacts.sha256_file(source)})
     evidence.update(collection_schema=PIPELINE_SCHEMA, acquisition_policy="all_available_components",
                     device=probe.serial, observed_metadata=metadata, observations={})
     evidence["metadata_sources"] = [
@@ -697,10 +707,22 @@ def verify_observations(evidence, evidence_path, packages):
         if last.get("public_metadata_schema") != public_metadata.SCHEMA:
             raise EvidenceError("Public metadata probe schema changed during acquisition")
         metadata, report = public_metadata.combine(first, last)
+        if "category_fallback" in evidence:
+            fallback = evidence["category_fallback"]
+            if not isinstance(fallback, dict) or not isinstance(fallback.get("observation"), dict):
+                raise EvidenceError("Invalid category fallback reference")
+            reference = fallback["observation"]
+            source = _confined(root, reference.get("path"))
+            if artifacts.sha256_file(source) != reference.get("sha256"):
+                raise EvidenceError("Category source checksum mismatch")
+            metadata, report, replay = public_metadata.apply_search_category(
+                metadata, report, json.loads(source.read_text()))
+            if replay is None or dict(replay, observation=reference) != fallback:
+                raise EvidenceError("Category fallback differs from native search evidence")
         if evidence.get("public_metadata_status") != report:
             raise EvidenceError("Public metadata status differs from saved observations")
         first = dict(first, metadata=metadata, public_metadata_status=report)
-    elif "public_metadata_status" in evidence:
+    elif "public_metadata_status" in evidence or "category_fallback" in evidence:
         raise EvidenceError("Public metadata status lacks versioned observations")
     if (binding_signature(first) != binding_signature(last)
             or _inventory_signature(first) != _inventory_signature(last)
@@ -740,9 +762,13 @@ def main(argv=None):
     if not APPID_RE.fullmatch(args.appid):
         raise EvidenceError("Invalid AppID")
     collection = (args.collection_dir or args.packages_json.parent).resolve()
+    # Collectors stage optional native search records beside the package list.
+    search_path = collection / "search_metadata.json"
+    search_metadata = (json.loads(_confined(collection, search_path.name).read_text())
+                       if search_path.exists() else None)
     evidence, packages = collect_runtime(RuntimeProbe(args.serial, args.frida, args.adb),
                                          args.attempt_id, collection,
-                                         expected_appid=args.appid, pid=args.pid)
+                                         expected_appid=args.appid, pid=args.pid, search_metadata=search_metadata)
     write_json(args.packages_json, packages)
     write_json(args.output, evidence)
     print(json.dumps({"appid": evidence["appid"], "version": evidence["version"],

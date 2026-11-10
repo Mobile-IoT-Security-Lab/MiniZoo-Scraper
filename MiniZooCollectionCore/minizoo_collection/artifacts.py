@@ -293,6 +293,8 @@ def validate_evidence(evidence_path, expected_appid, packages, attempt_id):
         public_fields["observed_metadata"] = replayed["metadata"]
         if "public_metadata_status" in replayed:
             public_fields["public_metadata_status"] = replayed["public_metadata_status"]
+        if "category_fallback" in evidence:
+            public_fields["category_fallback"] = evidence["category_fallback"]
     return {"appid": expected_appid, "attempt_id": attempt_id, "version": version,
             **public_fields,
             "version_kind": kind, "source": evidence["source"],

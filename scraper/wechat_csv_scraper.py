@@ -1036,7 +1036,7 @@ def main():
                     )
                 if opened:
                     evidence, receipt = collect_opened_app(
-                        probe, rec["attempt_id"], app_dir, pull_for_app)
+                        probe, rec["attempt_id"], app_dir, pull_for_app, search_metadata=[row])
                     apply_opened_collection(rec, evidence, receipt, out)
                     save_attempt_record(out, rec)
                     packages = [{"local_path": str(evidence.parent / p["local_file"]),

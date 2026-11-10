@@ -50,3 +50,25 @@ def search_fields(manifest, collection_dir):
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         result.update(search_status="rejected", search_error=str(error))
     return result
+
+
+def category_record(manifest, collection_dir):
+    """Read a checksum-checked, exact-AppID search flag for metadata only."""
+    from minizoo_collection.public_metadata import search_record
+    if search_fields(manifest, collection_dir)["search_status"] != "matched":
+        return None
+    reference = manifest["search_observation"]
+    path = Path(reference["path"])
+    if not path.is_absolute():
+        path = Path(collection_dir).absolute() / path
+    try:
+        data = path.read_bytes()
+        if hashlib.sha256(data).hexdigest() != reference["sha256"]:
+            return None
+        observation = json.loads(data)
+        candidate = observation["candidate"]
+        return search_record({"appid": candidate["observed_appid"],
+                              "raw_json": json.dumps(candidate.get("native_search_item")),
+                              "observed_at": observation.get("observed_at")})
+    except (OSError, ValueError, KeyError, TypeError):
+        return None

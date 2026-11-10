@@ -179,3 +179,51 @@ def combine(first, last):
     result = {key: next(iter(items)) for key, items in values.items() if len(items) == 1 and key not in conflicts}
     return result, status(result, conflicts, invalid,
         sum(b.get("public_metadata_status", {}).get("source_count", 0) for b in (first, last)))
+
+
+def search_record(row):
+    """Keep an explicit native game flag bound to a discovery/search AppID."""
+    if not isinstance(row, dict) or not re.fullmatch(r"wx[0-9a-f]{16}", str(row.get("appid", ""))):
+        return None
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Duplicate search field")
+            result[key] = value
+        return result
+    try:
+        raw = row.get("raw_json")
+        if not isinstance(raw, str) or len(raw) > RAW_LIMIT:
+            return None
+        item = json.loads(raw, object_pairs_hook=unique)
+        jump = item.get("jumpInfo")
+        appid = row["appid"]
+        if (not isinstance(jump, dict) or jump.get("appID") != appid
+                or any(value != appid for value in (item.get("appID", appid), jump.get("appId", appid)))
+                or type(item.get("isMinigame")) is not int or item["isMinigame"] not in (0, 1)):
+            return None
+        return {"appid": appid, "raw_json": raw, "observed_at": text(row.get("observed_at") or row.get("verified_at"))}
+    except (ValueError, TypeError, AttributeError, RecursionError):
+        return None
+
+
+def apply_search_category(metadata, report, records):
+    """Fill only an absent category; search never supplies runtime identity."""
+    if (metadata.get("category") or "category" in report.get("conflicting_fields", [])
+            or not isinstance(records, list) or len(records) > 64):
+        return metadata, report, None
+    matches = [(index, record) for index, row in enumerate(records)
+               if (record := search_record(row)) and record["appid"] == metadata.get("appid")]
+    flags = {json.loads(record["raw_json"])["isMinigame"] for _, record in matches}
+    if flags != {1}:
+        return metadata, report, None
+    enriched = dict(metadata, category="Mini game")
+    updated = status(enriched, report.get("conflicting_fields", []),
+                     set(report.get("invalid_fields", [])) - {"category"},
+                     report.get("source_count", 0) + len(matches))
+    proof = {"schema": "minizoo_category_fallback_v1", "kind": "wechat_native_search_result",
+             "category_scope": "platform_classification", "category": "Mini game",
+             "appid": metadata["appid"], "field": "isMinigame", "value": 1,
+             "source_indexes": [index for index, _ in matches], "original_status": report}
+    return enriched, updated, proof

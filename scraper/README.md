@@ -52,6 +52,11 @@ Open the newest **`collection_results/initial/csv_batch_*/`** folder:
 | `attempts/` | Saved packages and evidence for each attempt. |
 | `package_metadata.csv` | Metadata extracted from the saved packages. |
 
+If your input comes from discovery, keep its `appid` and `raw_json` columns.
+The collector can then recover a missing category as **Mini game** from WeChat's
+explicit game flag, only when the app that opened has that same AppID. No extra
+command is needed. A name-only CSV has no search evidence for this fallback.
+
 A finished command can contain a failed or partial acquisition: read the outcome
 in `manifest.csv`. Missing metadata remains explicit. If another app opens,
 its observed identity is recorded separately from the requested app.

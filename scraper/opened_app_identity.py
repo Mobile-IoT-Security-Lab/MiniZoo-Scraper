@@ -488,7 +488,7 @@ class PackageUnavailable(EvidenceError):
     pass
 
 
-def collect_opened_app(probe, attempt_id, directory, pull=None, maximum=None):
+def collect_opened_app(probe, attempt_id, directory, pull=None, maximum=None, *, search_metadata=None):
     """Collect all available components. The old numeric argument is ignored."""
     directory = Path(directory).absolute()
     directory.mkdir(parents=True, exist_ok=False)
@@ -513,7 +513,8 @@ def collect_opened_app(probe, attempt_id, directory, pull=None, maximum=None):
                            "sha256": digest, "bytes": len(data)})
         return result
 
-    evidence, captured = _runtime.collect_runtime(probe, attempt_id, directory, capture_fn=capture)
+    evidence, captured = _runtime.collect_runtime(probe, attempt_id, directory, capture_fn=capture,
+                                                  search_metadata=search_metadata)
     common_path = directory / "evidence.json"
     write_json(common_path, evidence)
     checked = _artifacts.validate_evidence(common_path, evidence["appid"], captured, attempt_id)

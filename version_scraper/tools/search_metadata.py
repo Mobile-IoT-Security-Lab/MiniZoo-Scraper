@@ -158,6 +158,8 @@ def classify(record, appid):
                  "bounds": [bounds[key] for key in ("left", "top", "right", "bottom")],
                  "tap": {"x": round((bounds["left"] + bounds["right"]) / 2), "y": round((bounds["top"] + bounds["bottom"]) / 2)},
                  "component_path": card.get("component_path"), "selector": card.get("selector")}
+    if isinstance(card.get("native_search_item"), dict):
+        candidate["native_search_item"] = card["native_search_item"]
     return {"status": "matched", "reason": "exact_public_card_identity", "candidate": candidate}
 
 
