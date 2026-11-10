@@ -33,6 +33,14 @@ class NativePrivacyError(RuntimeError):
     """The reviewed privacy fallback could not prove a safe close boundary."""
 
 
+class CacheInventoryChanged(NativePrivacyError):
+    """A complete preservation pass observed more or different remote bytes."""
+
+    def __init__(self, receipt):
+        super().__init__('Cache inventory changed during preservation; close refused')
+        self.receipt = receipt
+
+
 class NativePrivacyRateLimit(NativePrivacyError):
     def __init__(self, message, retry_after=0):
         super().__init__(message)
@@ -294,8 +302,42 @@ def preserve(serial, root, inventory, pull):
     with path.open('x') as stream:
         json.dump(receipt, stream, ensure_ascii=False, indent=2); stream.flush(); os.fsync(stream.fileno())
     if before != after:
-        raise NativePrivacyError('Cache inventory changed during preservation; close refused')
+        raise CacheInventoryChanged(receipt)
     return receipt
+
+
+def preserve_stable(serial, root, inventory, pull, check_stop=lambda: None, wait=None):
+    """Allow at most three passes when downloads only add cached packages.
+
+    Every pass retains its receipt and verifies all cached bytes. Removed or
+    replaced files, failed hashes and unreadable inventories remain blocking.
+    A later pass must also retain the hashes seen at the end of the prior pass.
+    """
+    wait = time.sleep if wait is None else wait
+    expected = {}
+    for attempt in range(3):
+        check_stop()
+        first_inventory = True
+        def checked_inventory():
+            nonlocal first_inventory
+            check_stop()
+            current = inventory()
+            if first_inventory and any(current.get(path) != digest for path, digest in expected.items()):
+                raise NativePrivacyError('Cache files disappeared or changed between preservation passes')
+            first_inventory = False
+            return current
+        try:
+            return preserve(serial, root, checked_inventory, pull)
+        except CacheInventoryChanged as error:
+            before = error.receipt['inventory_before']
+            after = error.receipt['inventory_after']
+            additions_only = (len(after) > len(before)
+                              and all(after.get(path) == digest for path, digest in before.items()))
+            if not additions_only or attempt == 2:
+                raise
+            expected = after
+            check_stop()
+            wait(1)
 
 
 def before_close(serial, output_root, check_stop=lambda: None, adb='adb', hierarchy_source=None):
@@ -378,8 +420,9 @@ def _before_close(serial, output_root, check_stop, adb, hierarchy_source):
                        check=True,timeout=30)
     def preserve_cache():
         check_stop()
-        return preserve(serial,root,lambda: artifacts.inventory(serial,adb),
-                        lambda path: artifacts._read_device(serial,'cat -- '+shlex.quote(path),adb))
+        return preserve_stable(serial,root,lambda: artifacts.inventory(serial,adb),
+                               lambda path: artifacts._read_device(serial,'cat -- '+shlex.quote(path),adb),
+                               check_stop=check_stop)
     initial = classify_focus(*observe('before'))
     result = preserve_cache()
     after = observe('after-preservation')

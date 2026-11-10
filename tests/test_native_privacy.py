@@ -227,6 +227,29 @@ class PortableApiTests(unittest.TestCase):
         self.assertEqual(state['taps'],[(72,2075),(540,2232)])
         self.assertFalse(any('uiautomator' in command for command in state['commands']))
 
+    def test_late_package_is_preserved_before_consent_without_extra_taps(self):
+        import hashlib
+        state,xml,output,run=self.make_io(checked=True)
+        remote=m.CACHE+'late.wxapkg';data=b'late completed download'
+        digest=hashlib.sha256(data).hexdigest();complete={remote:digest}
+        snapshots=iter([{},complete,complete,complete,complete,complete])
+        def inventory(*args):
+            return next(snapshots)
+        def pull(*args):
+            self.assertEqual(state['taps'],[])
+            return data
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp=str(Path(tmp).resolve())
+            with patch('subprocess.check_output',side_effect=output),patch('subprocess.run',side_effect=run), \
+                 patch.object(m.artifacts,'inventory',side_effect=inventory), \
+                 patch.object(m.artifacts,'_read_device',side_effect=pull) as read_device,patch('time.sleep'):
+                receipt=m.before_close('test-device',tmp,hierarchy_source=xml)
+            self.assertEqual(receipt['outcome'],'confirmed')
+            self.assertEqual(receipt['packages'],1)
+            self.assertTrue(Path(receipt['evidence'],'CLOSE_AUTHORIZED.json').is_file())
+            read_device.assert_called_once()
+        self.assertEqual(state['taps'],[(540,2232)])
+
     def test_malformed_native_xml_is_not_autoaccepted_or_closed(self):
         state,xml,output,run=self.make_io(invalid_xml=True)
         with tempfile.TemporaryDirectory() as tmp:
