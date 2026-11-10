@@ -63,6 +63,15 @@ Generic network messages such as “try again later” do not count as rate limi
 Explicit request limits and account verification still pause collection; failed
 searches are not counted as empty results.
 
+
+Before moving to the next app, the collectors handle the native **Authorize Data:
+WeChat Login** dialog with one attempt: select **I have read** only if it is
+unchecked, then press **Confirm**. If that fails or the dialog returns, preserve
+the available packages and close the mini app to continue. This accepts the
+WeChat login data authorization shown by that specific dialog. Other consent
+screens are not accepted automatically; account verification and explicit rate
+limits remain blocking. Saved cache bytes do not certify a successful acquisition.
+
 ## Other tasks
 
 - [Inspect or reconstruct saved packages](MiniZooCollectionCore/README.md).

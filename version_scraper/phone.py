@@ -10,6 +10,12 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import minizoo_core_bootstrap
+from minizoo_collection.native_privacy import (
+    before_close as privacy_before_close, NativePrivacyError,
+    NativePrivacyRateLimit, NativePrivacySecurity,
+)
+
 
 class PhoneError(RuntimeError):
     pass
@@ -157,6 +163,18 @@ class Phone:
         return request(self.url + "/session/" + self.session + endpoint, method, data)
 
     def mobile(self, command, arguments):
+        if command == "terminateApp" and arguments.get("appId") == "com.tencent.mm":
+            try:
+                privacy_before_close(self.device["udid"], self.config["output_dir"],
+                                     check_stop=lambda: self.pacer.wait(0),
+                                     adb=self.config.get("adb", "adb"),
+                                     hierarchy_source=self.source)
+            except NativePrivacyRateLimit as error:
+                raise RateLimit(str(error), error.retry_after) from error
+            except NativePrivacySecurity as error:
+                raise Suspended(str(error)) from error
+            except NativePrivacyError as error:
+                raise ScreenUnavailable(str(error)) from error
         return self.call("/execute/sync", data={"script": "mobile: " + command, "args": [arguments]})
 
     def source(self):

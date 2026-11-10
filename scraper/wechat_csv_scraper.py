@@ -43,6 +43,7 @@ from opened_app_identity import (
 )
 from minizoo_collection.processing import process_acquisition
 from minizoo_collection.artifacts import _immutable
+from minizoo_collection.native_privacy import before_close as privacy_before_close, NativePrivacyError
 
 ROOT = Path(__file__).resolve().parent
 REMOTE_TMP_ROOT = "/sdcard/wechat_miniapp_collection"
@@ -50,6 +51,7 @@ WECHAT_PACKAGE = "com.tencent.mm"
 ADBKEYBOARD_PKG = "com.android.adbkeyboard"
 ADBKEYBOARD_IME = "com.android.adbkeyboard/.AdbIME"
 ADB_SERIAL = ""
+COLLECTION_OUTPUT = None
 MINIPROGRAMS_ROW_Y = 0.515
 
 
@@ -662,6 +664,9 @@ def launch_wechat():
 
 
 def force_stop_wechat():
+    if COLLECTION_OUTPUT is None:
+        raise NativePrivacyError("Collection output directory is not configured")
+    privacy_before_close(ADB_SERIAL, COLLECTION_OUTPUT)
     shell(f"am force-stop {WECHAT_PACKAGE}", check=False)
     time.sleep(1.0)
 
@@ -963,6 +968,8 @@ def main():
 
     csv_path = Path(args.csv).expanduser().resolve()
     out = Path(args.output).expanduser().resolve()
+    global COLLECTION_OUTPUT
+    COLLECTION_OUTPUT = out
     app_root = out / "attempts"
     qr_root = out / "qr_codes"
     out.mkdir(parents=True, exist_ok=True)
@@ -1009,6 +1016,7 @@ def main():
                 rec["status"] = "prepared"
                 writer.writerow(rec); durable_flush(mf); continue
             opened = False
+            boundary_error = None
             app_dir = app_root / rec["attempt_id"]
             save_attempt_record(out, rec)
             try:
@@ -1070,6 +1078,8 @@ def main():
                         flush=True,
                     )
             except Exception as e:
+                if isinstance(e, NativePrivacyError):
+                    boundary_error = e
                 record_attempt_error(rec, e, opened, app_dir, out)
                 print(f"[PACKAGE_ERROR] {idx}/{len(rows)} id={rec['csv_id']} name={name} error={e}", flush=True)
             save_attempt_record(out, rec)
@@ -1080,6 +1090,8 @@ def main():
             if metadata_rows:
                 print(f"[METADATA_RECORDED] {idx}/{len(rows)} observed_appid={rec['appid']} "
                       f"packages={metadata_rows} csv={out / 'package_metadata.csv'}", flush=True)
+            if boundary_error is not None:
+                raise boundary_error
             back(2)
 
     print(f"DONE: {out}")
