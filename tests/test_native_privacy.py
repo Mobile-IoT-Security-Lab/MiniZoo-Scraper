@@ -213,7 +213,8 @@ class PortableApiTests(unittest.TestCase):
         state,xml,output,run=self.make_io(checked=False)
         events=[]
         def inventory(*args): events.append(('inventory',len(state['taps'])));return {}
-        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = str(Path(tmp).resolve())
             with patch('subprocess.check_output',side_effect=output),patch('subprocess.run',side_effect=run), \
                  patch.object(m.artifacts,'inventory',side_effect=inventory),patch('time.sleep'):
                 receipt=m.before_close('test-device',tmp,hierarchy_source=lambda: (
@@ -228,7 +229,8 @@ class PortableApiTests(unittest.TestCase):
 
     def test_malformed_native_xml_is_not_autoaccepted_or_closed(self):
         state,xml,output,run=self.make_io(invalid_xml=True)
-        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = str(Path(tmp).resolve())
             with patch('subprocess.check_output',side_effect=output),patch('subprocess.run',side_effect=run), \
                  patch.object(m.artifacts,'inventory') as inventory:
                 with self.assertRaises(m.NativePrivacyError):
@@ -239,7 +241,8 @@ class PortableApiTests(unittest.TestCase):
 
     def test_cache_preservation_failure_prevents_consent(self):
         state,xml,output,run=self.make_io()
-        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = str(Path(tmp).resolve())
             with patch('subprocess.check_output',side_effect=output),patch('subprocess.run',side_effect=run), \
                  patch.object(m.artifacts,'inventory',side_effect=m.artifacts.ArtifactError('cache unavailable')):
                 with self.assertRaises(m.NativePrivacyError):
@@ -249,7 +252,8 @@ class PortableApiTests(unittest.TestCase):
 
     def test_account_login_after_confirm_stops_without_close_receipt(self):
         state,xml,output,run=self.make_io(return_activity='com.tencent.mm.ui.LoginUI')
-        with tempfile.TemporaryDirectory(dir='/private/tmp') as tmp:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = str(Path(tmp).resolve())
             with patch('subprocess.check_output',side_effect=output),patch('subprocess.run',side_effect=run), \
                  patch.object(m.artifacts,'inventory',return_value={}),patch('time.sleep'):
                 with self.assertRaises(m.NativePrivacyError):
