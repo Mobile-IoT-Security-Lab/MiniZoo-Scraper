@@ -164,7 +164,7 @@ class Phone:
 
     def check_screen(self):
         source = self.source()
-        if re.search(r"too (?:many|frequent) (?:requests|attempts)|try again later|操作(?:过于|太)?频繁|访问(?:过于|太)?频繁|请求过于频繁|稍后再试", source, re.I):
+        if re.search(r"too (?:many|frequent) (?:requests|attempts)|rate limit(?:ed| exceeded)?|操作(?:过于|太)?频繁|访问(?:过于|太)?频繁|请求过于频繁", source, re.I):
             delay = re.search(r"(\d+)\s*(seconds?|minutes?|秒|分钟)", source, re.I)
             seconds = int(delay[1]) * (60 if delay and delay[2].lower().startswith(("minute", "分钟")) else 1) if delay else 0
             raise RateLimit("WeChat reports a rate limit", seconds)

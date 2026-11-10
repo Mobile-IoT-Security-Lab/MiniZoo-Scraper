@@ -85,7 +85,8 @@ coverage, intact artifacts and successful reconstruction. Partial acquisitions
 and missing metadata remain explicit. Keep the complete output tree at its
 original paths when resuming.
 
-Ten consecutive distinct empty searches or a rate-limit response pause the queue.
+Ten consecutive distinct empty searches or an explicit rate-limit response pause
+the queue. A generic “try again later” network message alone is not a rate limit.
 Respect the saved waiting period and inspect the phone before requesting `resume`.
 The `run` command never silently clears a pause.
 

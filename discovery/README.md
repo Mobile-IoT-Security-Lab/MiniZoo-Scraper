@@ -62,8 +62,9 @@ docker compose run --rm discovery resume --include-capped
 docker compose run --rm discovery run --serial "$DEVICE_SERIAL" --max-pages 10 --max-queries 1
 ```
 
-Ctrl-C saves the current request. Ten consecutive genuine empty queries or a
-rate-limit/verification response pause discovery. Other request errors retain
+Ctrl-C saves the current request. Ten consecutive genuine empty queries or an
+explicit rate-limit/verification response pause discovery. Generic “try again later”
+messages alone are not rate limits. Other request errors retain
 the cursor and stop the run. Nothing restarts automatically.
 
 `catalog.csv` can be used as initial-collection input. The database also retains

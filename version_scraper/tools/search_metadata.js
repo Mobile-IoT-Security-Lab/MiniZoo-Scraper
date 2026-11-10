@@ -6,7 +6,7 @@
   if (!/^wx[0-9a-f]{16}$/.test(targetAppId)) return stop('invalid_appid');
   const text = document.body.innerText || '';
   // Keep explicit throttle markers aligned with the Appium/native OCR guards.
-  if (/too (?:many|frequent) (?:requests|attempts)|try again later|操作(?:过于|太)?频繁|访问(?:过于|太)?频繁|请求过于频繁|稍后再试/i.test(text)) {
+  if (/too (?:many|frequent) (?:requests|attempts)|rate limit(?:ed| exceeded)?|操作(?:过于|太)?频繁|访问(?:过于|太)?频繁|请求过于频繁/i.test(text)) {
     result.wall_kind = 'rate_limit';
     const wait = text.match(/(\d+)\s*(seconds?|minutes?|秒|分钟)/i);
     result.retry_after = wait ? Number(wait[1]) * (/minute|分钟/i.test(wait[2]) ? 60 : 1) : 0;

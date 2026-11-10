@@ -31,7 +31,7 @@ SOURCE_HASHES = {
     "frida_direct_query.js": "e65472730ca2cea2215574a495d6764121d35ee2691bec2d68e54a6c919aaa11",
 }
 APPID = re.compile(r"wx[0-9a-f]{16}\Z")
-RATE = re.compile(r"too (?:many|frequent) (?:requests|attempts)|try again later|操作(?:过于|太)?频繁|访问(?:过于|太)?频繁|请求过于频繁|稍后再试", re.I)
+RATE = re.compile(r"too (?:many|frequent) (?:requests|attempts)|rate limit(?:ed| exceeded)?|操作(?:过于|太)?频繁|访问(?:过于|太)?频繁|请求过于频繁", re.I)
 WALL = re.compile(r"captcha|security verification|安全验证|帐号被封|账号被封", re.I)
 EMPTY_WORDING = {"暂无相关结果", "no results", "no results found", "no relevant results"}
 STOPPING = False

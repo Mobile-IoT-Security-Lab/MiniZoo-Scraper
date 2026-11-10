@@ -260,7 +260,7 @@ class VisualPhone(Phone):
     def check_screen(self):
         screen = self.screenshot_ocr()
         visible = '\n'.join(node['text'] for node in self.confident_nodes(screen))
-        if re.search(r'too (?:many|frequent) (?:requests|attempts)|try again later|操作(?:过于|太)?频繁|访问(?:过于|太)?频繁|请求过于频繁|稍后再试', visible, re.I):
+        if re.search(r'too (?:many|frequent) (?:requests|attempts)|rate limit(?:ed| exceeded)?|操作(?:过于|太)?频繁|访问(?:过于|太)?频繁|请求过于频繁', visible, re.I):
             delay = re.search(r'(\d+)\s*(seconds?|minutes?|秒|分钟)', visible, re.I)
             seconds = int(delay[1]) * (60 if delay and delay[2].lower().startswith(('minute', '分钟')) else 1) if delay else 0
             raise RateLimit('WeChat reports a rate limit', seconds)

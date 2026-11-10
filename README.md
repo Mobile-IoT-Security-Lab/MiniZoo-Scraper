@@ -55,6 +55,10 @@ already know the app's name. For simultaneous collection, use one phone per role
 These folders are excluded from Git. Press **Ctrl-C once** and wait for the
 collector to save its progress before disconnecting a phone.
 
+Generic network messages such as “try again later” do not count as rate limits.
+Explicit request limits and account verification still pause collection; failed
+searches are not counted as empty results.
+
 ## Other tasks
 
 - [Inspect or reconstruct saved packages](MiniZooCollectionCore/README.md).
