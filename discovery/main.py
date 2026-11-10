@@ -100,7 +100,9 @@ def inspect_response(response):
         raise RuntimeError("Invalid WeChat result format")
     no_more = body.get("noMoreData")
     wording = no_more.get("noMoreWording", "") if isinstance(no_more, dict) else ""
-    messages = "\n".join(str(v) for v in (result.get("errMsg", ""), body.get("errMsg", ""), wording))
+    terminal_wording = body.get("nomoreText", "")
+    messages = "\n".join(str(v) for v in
+                         (result.get("errMsg", ""), body.get("errMsg", ""), wording, terminal_wording))
     if RATE.search(messages) or WALL.search(messages):
         raise Pause("rate_limit_or_verification_required")
     if result.get("ret") not in (None, 0) or body.get("ret") not in (None, 0):
@@ -108,7 +110,8 @@ def inspect_response(response):
     if body.get("data") is None:
         if (result.get("ret") == 0 and body.get("ret") == 0 and "data" in body
                 and body.get("continueFlag") == 0
-                and str(wording).strip().lower() in EMPTY_WORDING):
+                and (str(wording).strip().lower() in EMPTY_WORDING
+                     or str(terminal_wording).strip().lower() == "no more results")):
             return dict(body, data=[])
         raise Pause("unexplained_null_response")
     if not isinstance(body["data"], list):
