@@ -7,7 +7,7 @@ Developed and tested with **WeChat 8.0.72 for Android**.
 
 # Publication
 
-More details about this work can be found in the paper MiniZoo: An Evolving Dataset of Mini Apps for the Research Community:
+More details about this work can be found in the paper [MiniZoo: An Evolving Dataset of Mini Apps for the Research Community](https://arxiv.org/abs/2611.13125):
 
 ```
 @misc{ferrari2026minizooevolvingdatasetmini,
