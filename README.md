@@ -5,6 +5,23 @@ Save everything locally in `collection_results/`.
 
 Developed and tested with **WeChat 8.0.72 for Android**.
 
+# Publication
+
+More details about this work can be found in the paper MiniZoo: An Evolving Dataset of Mini Apps for the Research Community:
+
+```
+@misc{ferrari2026minizooevolvingdatasetmini,
+      title={MiniZoo: An Evolving Dataset of Mini Apps for the Research Community}, 
+      author={Luca Ferrari and Marco Alecci and Jordan Samhi and Tegawendé F. Bissyandé and Jacques Klein and Luca Verderame},
+      year={2026},
+      eprint={2611.13125},
+      archivePrefix={arXiv},
+      primaryClass={cs.SE},
+      url={https://arxiv.org/abs/2611.13125}, 
+}
+```
+---
+
 ## 1. Install
 
 On **macOS or Linux**, install [Git](https://git-scm.com/downloads) and
