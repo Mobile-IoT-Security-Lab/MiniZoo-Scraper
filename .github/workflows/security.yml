@@ -19,8 +19,10 @@ jobs:
       - name: Check publication inputs
         run: |
           python3 tools/check_publication.py
-      - name: Test native privacy fallback and collector hooks
+      - name: Test collector fallbacks and checkpoint handling
         run: python3 -m unittest discover -s tests -v
+      - name: Test Discovery callback waiting
+        run: node tests/test_discovery_callback_wait.js
       - name: Scan history and working tree
         env:
           GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:b109bc5f8f76a38196a3e413704fc5b9e3c32360bce4e4b603bd6f45b3721dbb

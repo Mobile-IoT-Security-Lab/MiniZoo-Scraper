@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from metadata import explicitly_empty, item_record, save_records
+from bridge import compose_bridge
 
 SOURCE_COMMIT = "5cd8dff0ea25f8bd52f4898954b8bd8d76ef6958"
 SOURCE_HASHES = {
@@ -167,6 +168,8 @@ def apply_page(db, crawler, batch, query, cursor, response, max_pages):
 
 
 def query_phone(args, crawler, query, cursor):
+    if STOPPING:
+        raise Pause("operator_stop_requested")
     pid = subprocess.check_output(["adb", "-s", args.serial, "shell", "pidof", "com.tencent.mm"], text=True, timeout=10).strip()
     if not pid.isdigit():
         raise RuntimeError("No unique WeChat main process; open WeChat's Mini Program search page")
@@ -176,34 +179,49 @@ def query_phone(args, crawler, query, cursor):
     # exception messages. A single combined script preserves the bridge's
     # strict mode and options-before-query execution order.
     try:
-        bridge = (args.source / "MetadataCrawler/frida_direct_query.js").read_text(encoding="utf-8")
+        bridge = compose_bridge(
+            (args.source / "MetadataCrawler/frida_direct_query.js").read_text(encoding="utf-8"),
+            SOURCE_HASHES["frida_direct_query.js"],
+        )
         with tempfile.TemporaryDirectory(prefix=".minizoo-query-", dir=args.database.parent) as temporary:
             script = Path(temporary) / "query.js"
             fd = os.open(script, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as stream:
                 stream.write("'use strict';\nglobalThis.__MC_OPTIONS = " + json.dumps(options) + ";\n")
                 stream.write(bridge)
+            if STOPPING:
+                raise Pause("operator_stop_requested")
             result = subprocess.run([
-                args.frida, "-D", args.serial, "-p", pid, "-q", "--no-auto-reload", "-t", "11",
+                args.frida, "-D", args.serial, "-p", pid, "-q", "--no-auto-reload", "-t", "25",
                 "-l", str(script),
-            ], capture_output=True, text=True, timeout=25)
+            ], capture_output=True, text=True, timeout=35)
     except subprocess.TimeoutExpired:
         raise RuntimeError("Discovery bridge timed out; page cursor retained") from None
     except subprocess.SubprocessError:
         raise RuntimeError("Discovery bridge process failed; page cursor retained") from None
     except OSError:
         raise RuntimeError("Discovery bridge could not start; page cursor retained") from None
-    completed = [value for value in crawler.parse_frida_messages(result.stdout) if value.get("phase") == "completed"]
+    if STOPPING:
+        raise Pause("operator_stop_requested")
+    messages = list(crawler.parse_frida_messages(result.stdout))
+    if any(value.get("phase") == "error" and value.get("error") == "rate_limit_or_verification_required"
+           for value in messages):
+        raise Pause("rate_limit_or_verification_required")
+    completed = [value for value in messages if value.get("phase") == "completed"]
     if result.returncode or len(completed) != 1:
         # Never print raw Frida output: it can contain request cookies.
         raise RuntimeError(f"Discovery bridge unavailable: exit={result.returncode}, completed_callbacks={len(completed)}")
     value = completed[0]
     request = value.get("request")
     callback = value.get("result")
-    if (not isinstance(request, dict) or not isinstance(callback, dict)
+    if (not isinstance(request, dict)
             or request.get("query") != query or request.get("offset") != cursor["offset"]
-            or not request.get("requestId") or callback.get("requestId") != request["requestId"]):
+            or not isinstance(request.get("requestId"), str) or not request["requestId"]
+            or (callback is not None and (not isinstance(callback, dict)
+                                         or callback.get("requestId") != request["requestId"]))):
         raise RuntimeError("Search callback does not match the requested query, page and request ID")
+    # A missing callback is an observation, never an empty successful page.
+    # apply_page persists it before inspect_response pauses with the cursor intact.
     return value
 
 

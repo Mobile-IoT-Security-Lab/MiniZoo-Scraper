@@ -17,6 +17,11 @@ and process control. Its device search adapter is loaded at runtime from an
 external MiniCrawler adapter mounted read-only. Those source files are not copied
 into the container image and are not covered by the project's MIT grant.
 
+The first-party `discovery/bridge.py` and `discovery/callback_wait.js` apply
+bounded callback waiting and focused-page checks to the verified external
+template in memory. Request construction remains in the external adapter;
+its pinned source files and checksums are unchanged.
+
 The initial collector originated in
 [WeChatMiniAppScraper](https://github.com/luca959/WeChatMiniAppScraper), with local
 source revision `be2f02653a98a4ccd42270f3a175bf873365fa3b` plus subsequent working

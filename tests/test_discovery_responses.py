@@ -1,11 +1,14 @@
 import copy
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
 import sys
 import types
 import unittest
+from unittest import mock
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'discovery'))
@@ -184,6 +187,114 @@ class QueryEmptyCounterTests(unittest.TestCase):
         self.assertEqual(d.cursor_for(self.db, 'retained'), cursor)
         self.assertEqual(d.state(self.db, 'empty_queries', []), [])
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM discovery_observations').fetchone()[0], 2)
+
+    def test_missing_callback_keeps_existing_cursor_and_raw_observation(self):
+        self.apply('retained', nonempty_page())
+        cursor = d.cursor_for(self.db, 'retained')
+        response = {'result': None, 'visible_text': 'Normal search page', 'callback_wait_ms': 20000}
+        with self.assertRaisesRegex(RuntimeError, 'No completed WeChat search result'):
+            self.apply('retained', response)
+        self.assertEqual(d.cursor_for(self.db, 'retained'), cursor)
+        self.assertEqual(d.state(self.db, 'empty_queries', []), [])
+        self.assertEqual(self.db.execute('SELECT status FROM query_queue').fetchone()[0], 'pending')
+        saved = json.loads(self.db.execute('SELECT response FROM discovery_observations ORDER BY id DESC').fetchone()[0])
+        self.assertEqual(saved, response)
+
+    def test_missing_callback_with_security_warning_still_pauses(self):
+        with self.assertRaisesRegex(d.Pause, 'rate_limit_or_verification_required'):
+            self.apply('blocked', {'result': None, 'visible_text': 'Security verification'})
+
+
+class PhoneObservationTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        root = Path(self.temporary.name)
+        (root / 'MetadataCrawler').mkdir()
+        # Synthetic template integration points only, never upstream source.
+        self.template = ('instances.forEach(function (instance) {\n'
+                         'instance.evaluateJavascript(expression, Callback.$new());\n'
+                         'discardOldFixedWait();\n                });')
+        (root / 'MetadataCrawler/frida_direct_query.js').write_text(self.template)
+        self.args = types.SimpleNamespace(source=root, database=root / 'test.sqlite', serial='test-device', frida='frida')
+        self.cursor = {'offset': 20, 'page': 2, 'cookies': 'private-cookie', 'search_id': 'private-search'}
+        self.value = {'phase': 'completed', 'request': {'query': 'query', 'offset': 20, 'requestId': 'expected'},
+                      'result': {'requestId': 'expected', 'ret': 0, 'json': {'ret': 0, 'data': []}}}
+        self.parser = mock.Mock(return_value=[self.value])
+        self.crawler = types.SimpleNamespace(parse_frida_messages=self.parser)
+        self.pid = mock.patch.object(d.subprocess, 'check_output', return_value='1234').start()
+        self.run = mock.patch.object(d.subprocess, 'run', return_value=types.SimpleNamespace(stdout='output', returncode=0)).start()
+        mock.patch.dict(d.SOURCE_HASHES, {'frida_direct_query.js': hashlib.sha256(self.template.encode()).hexdigest()}).start()
+        d.STOPPING = False
+
+    def tearDown(self):
+        mock.patch.stopall()
+        self.temporary.cleanup()
+        d.STOPPING = False
+
+    def call(self):
+        return d.query_phone(self.args, self.crawler, 'query', self.cursor)
+
+    def test_actual_composer_and_runtime_keep_private_options_out_of_arguments(self):
+        def capture(command, **kwargs):
+            script = Path(command[command.index('-l') + 1])
+            content = script.read_text()
+            self.assertEqual(script.stat().st_mode & 0o777, 0o600)
+            self.assertIn('globalThis.__MINIZOO_DISCOVERY.start(instance', content)
+            self.assertIn('globalThis.__MINIZOO_DISCOVERY.focused(instances)', content)
+            self.assertNotIn('discardOldFixedWait', content)
+            self.assertIn('private-cookie', content)
+            self.assertNotIn('private-cookie', str(command))
+            self.assertEqual(command[command.index('-t') + 1], '25')
+            self.assertEqual(kwargs['timeout'], 35)
+            return types.SimpleNamespace(stdout='output', returncode=0)
+        self.run.side_effect = capture
+        self.assertIs(self.call(), self.value)
+        self.assertEqual(list(self.args.database.parent.glob('.minizoo-query-*')), [])
+
+    def test_missing_callback_is_returned_only_as_an_observation(self):
+        self.value['result'] = None
+        self.assertIsNone(self.call()['result'])
+        with self.assertRaisesRegex(RuntimeError, 'No completed WeChat search result'):
+            d.inspect_response(self.value)
+
+    def test_query_offset_and_callback_identity_must_match(self):
+        for mutate in (lambda v: v['request'].update(query='other'),
+                       lambda v: v['request'].update(offset=0),
+                       lambda v: v['request'].update(requestId=''),
+                       lambda v: v['result'].update(requestId='other'),
+                       lambda v: v.update(result=[])):
+            changed = copy.deepcopy(self.value)
+            mutate(changed)
+            self.parser.return_value = [changed]
+            with self.assertRaisesRegex(RuntimeError, 'does not match'):
+                self.call()
+
+    def test_operator_stop_prevents_device_contact(self):
+        d.STOPPING = True
+        with self.assertRaisesRegex(d.Pause, 'operator_stop_requested'):
+            self.call()
+        self.pid.assert_not_called()
+        self.run.assert_not_called()
+
+    def test_operator_stop_during_wait_is_checked_before_accepting_result(self):
+        def stop(*args, **kwargs):
+            d.STOPPING = True
+            return types.SimpleNamespace(stdout='output', returncode=0)
+        self.run.side_effect = stop
+        with self.assertRaisesRegex(d.Pause, 'operator_stop_requested'):
+            self.call()
+        self.parser.assert_not_called()
+
+    def test_security_gate_failure_keeps_its_pause_reason(self):
+        self.parser.return_value = [{'phase': 'error', 'error': 'rate_limit_or_verification_required'}]
+        with self.assertRaisesRegex(d.Pause, 'rate_limit_or_verification_required'):
+            self.call()
+
+    def test_changed_external_bridge_fails_closed_before_frida(self):
+        (self.args.source / 'MetadataCrawler/frida_direct_query.js').write_text('changed')
+        with self.assertRaisesRegex(RuntimeError, 'Modified MiniCrawler bridge'):
+            self.call()
+        self.run.assert_not_called()
 
 
 if __name__ == '__main__':

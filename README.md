@@ -72,6 +72,12 @@ WeChat login data authorization shown by that specific dialog. Other consent
 screens are not accepted automatically; account verification and explicit rate
 limits remain blocking. Saved cache bytes do not certify a successful acquisition.
 
+If that exact dialog is still loading or its **Confirm** button is temporarily
+obscured, the collectors wait for fresh observations before acting.
+Late package downloads receive a bounded cache-preservation retry. Unknown
+screens, changed package bytes and unresolved dialogs still stop the affected
+collector with its evidence saved.
+
 ## Other tasks
 
 - [Inspect or reconstruct saved packages](MiniZooCollectionCore/README.md).

@@ -67,6 +67,11 @@ explicit rate-limit/verification response pause discovery. Generic “try again 
 messages alone are not rate limits. Other request errors retain
 the cursor and stop the run. Nothing restarts automatically.
 
+A slow callback is observed for up to 20 seconds using the same submitted
+request. Only the matching request can supply a result, and the focused search
+page is checked again during the wait. An expired wait or a changed callback
+handler leaves the cursor available for a later explicit restart.
+
 `catalog.csv` can be used as initial-collection input. The database also retains
 responses and cursors. Missing metadata preserves earlier values; search terms
 are never used as categories. The adapter is separately maintained and is not

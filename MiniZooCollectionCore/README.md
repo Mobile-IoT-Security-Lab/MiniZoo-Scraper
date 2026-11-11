@@ -67,6 +67,12 @@ metadata; `processing.json` records processing outcomes. Check these statuses
 before using an acquisition. Keep the complete folder for recovery and later
 verification; see [path handling](../docs/DOCKER.md#inspect-or-reconstruct-saved-data-independently).
 
+If reconstruction fails or times out, the original packages, extracted metadata,
+partial outputs and logs remain available. `processing.json` records the failed
+reconstruction separately from successful package acquisition. An integrity
+failure still invalidates the acquisition; partial reconstruction never advances
+the version baseline.
+
 ## Native usage
 
 Follow the [native installation](../docs/NATIVE.md), including Node.js and the

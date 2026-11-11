@@ -55,6 +55,45 @@ class PrivacyControlUnavailable(ValueError):
     """Known dialog, but native control state cannot be operated reliably."""
 
 
+class IncompletePrivacyScreen(NativePrivacyError):
+    """Exact GDPR title/agreement are visible, but Confirm is obscured."""
+
+
+class LoadingPrivacyScreen(NativePrivacyError):
+    """Only the reviewed native GDPR loading header is visible."""
+
+
+def privacy_loading_shell(screen):
+    """Recognize an empty GDPR header solely to wait for fresh evidence."""
+    try:
+        width, height = screen['width'], screen['height']
+        if width <= 0 or height <= 0:
+            return False
+        header = []
+        for node in screen['nodes']:
+            text = node.get('text', '').strip()
+            if not text:
+                continue
+            left, top, right, bottom = node['bounds']
+            if not (0 <= left < right <= width and 0 <= top < bottom <= height):
+                return False
+            if bottom <= height * .06:
+                continue  # Clock/status bar; security checks have already run.
+            if (node.get('package', 'com.tencent.mm') != 'com.tencent.mm'
+                    or node.get('confidence', 0) < .8
+                    or not height * .07 <= top < bottom <= height * .14):
+                return False
+            if text == 'X' and right <= width * .15:
+                header.append(text)
+            elif text == 'WeChat' and width * .3 <= left < right <= width * .7:
+                header.append(text)
+            else:
+                return False
+        return sorted(header) == ['WeChat', 'X']
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
 def native_identities(focus):
     identities = []
     for field in ('mCurrentFocus', 'mFocusedApp'):
@@ -83,8 +122,13 @@ def classify_focus(focus, screen):
     identities = native_identities(focus)
     check_security_walls(screen)
     if identities == (PRIVACY_ACTIVITY,) * 2:
+        if privacy_loading_shell(screen):
+            raise LoadingPrivacyScreen('Native privacy dialog is still loading')
         texts = {n['text'].strip() for n in screen.get('nodes', [])
-                 if n.get('package', 'com.tencent.mm') == 'com.tencent.mm'}
+                 if n.get('package', 'com.tencent.mm') == 'com.tencent.mm'
+                 and n.get('confidence', 0) >= .8}
+        if {PRIVACY_TITLE, PRIVACY_AGREEMENT} <= texts and 'Confirm' not in texts:
+            raise IncompletePrivacyScreen('Native privacy Confirm is not visible')
         if not {PRIVACY_TITLE, PRIVACY_AGREEMENT, 'Confirm'} <= texts:
             raise NativePrivacyError('Unrecognized native privacy dialog')
         return identities
@@ -95,6 +139,27 @@ def classify_focus(focus, screen):
                 re.fullmatch(r'com\.tencent\.mm\.plugin\.appbrand\.ui\.AppBrandUI\d*', activity)):
             raise NativePrivacyError('Unexpected native activity: ' + activity)
     return identities
+
+
+def reviewed_observation(observe, label, *, wait=None, check_stop=lambda: None):
+    """Reobserve a loading header or obscured Confirm at most three times.
+
+    Waiting never authorizes a tap or close. Both native identities, security
+    checks and the complete dialog classification must pass on fresh evidence.
+    """
+    wait = time.sleep if wait is None else wait
+    for attempt in range(3):
+        check_stop()
+        observation = observe(label if attempt == 0 else label + '-retry-' + str(attempt))
+        check_stop()
+        try:
+            return observation, classify_focus(*observation)
+        except (IncompletePrivacyScreen, LoadingPrivacyScreen):
+            if attempt == 2:
+                raise
+            check_stop()
+            wait(2)
+            check_stop()
 
 
 def _parse_hierarchy(xml):
@@ -116,10 +181,17 @@ def screen_from_xml(xml, size):
         tree = _parse_hierarchy(xml)
     except (AttributeError, TypeError, ValueError, ET.ParseError) as error:
         raise NativePrivacyError('Native accessibility hierarchy is unreadable') from error
-    return {'width': size[0], 'height': size[1], 'nodes': [
-        {'text': text, 'confidence': 1, 'package': node.get('package', '')}
-        for node in tree.iter()
-        for text in (node.get('text', '').strip(), node.get('content-desc', '').strip()) if text]}
+    nodes = []
+    for node in tree.iter():
+        match = re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', node.get('bounds', ''))
+        for text in dict.fromkeys((node.get('text', '').strip(), node.get('content-desc', '').strip())):
+            if not text:
+                continue
+            observed = {'text': text, 'confidence': 1, 'package': node.get('package', '')}
+            if match:
+                observed['bounds'] = list(map(int, match.groups()))
+            nodes.append(observed)
+    return {'width': size[0], 'height': size[1], 'nodes': nodes}
 
 
 def privacy_controls(xml, screen):
@@ -190,16 +262,22 @@ def resolve_privacy_once(observe, hierarchy, tap, wait, check_stop):
     import subprocess
     evidence = {'attempted': False, 'checkbox_tapped': False, 'confirm_tapped': False}
     def checked_observation(label):
-        observation = observe(label)
-        return observation, classify_focus(*observation)
+        return reviewed_observation(observe, label, wait=wait, check_stop=check_stop)
     def fresh_controls(label):
         observation, identities = checked_observation(label)
         if identities != (PRIVACY_ACTIVITY,) * 2:
             return observation, None
-        xml = hierarchy(label)
+        xml = None
+        def observe_controls(current_label):
+            nonlocal xml
+            # A retry may outlive the checkbox state first read. Never use
+            # coordinates or checked/enabled state retained across that wait.
+            xml = hierarchy(current_label)
+            return observe(current_label + '-fresh')
         # Reclassify after accessibility reads. A valid ordinary app may have
         # replaced the dialog already; in that case do not tap stale controls.
-        observation, identities = checked_observation(label + '-fresh')
+        observation, identities = reviewed_observation(
+            observe_controls, label, wait=wait, check_stop=check_stop)
         if identities != (PRIVACY_ACTIVITY,) * 2:
             return observation, None
         return observation, privacy_controls(xml, observation[1])
@@ -237,11 +315,13 @@ def resolve_privacy_once(observe, hierarchy, tap, wait, check_stop):
         return observation, dict(evidence, outcome='close_only', reason=str(error))
 
 
-def preserve_after_privacy(observed, consent, preserve_cache, observe):
+def preserve_after_privacy(observed, consent, preserve_cache, observe, *,
+                           wait=None, check_stop=lambda: None):
     """Preserve new bytes and allow one late return of the reviewed dialog."""
     expected = classify_focus(*observed)
     result = preserve_cache()
-    actual = classify_focus(*observe('after-privacy-preservation'))
+    _, actual = reviewed_observation(observe, 'after-privacy-preservation',
+                                     wait=wait, check_stop=check_stop)
     if actual != expected:
         if actual != (PRIVACY_ACTIVITY,) * 2:
             raise NativePrivacyError('Native focus changed after privacy preservation')
@@ -250,7 +330,9 @@ def preserve_after_privacy(observed, consent, preserve_cache, observe):
         # The known dialog can return after successful confirmation. Do not
         # confirm twice: take one final stable preservation before closing it.
         result = preserve_cache()
-        if classify_focus(*observe('after-returned-privacy-preservation')) != actual:
+        _, final = reviewed_observation(observe, 'after-returned-privacy-preservation',
+                                        wait=wait, check_stop=check_stop)
+        if final != actual:
             raise NativePrivacyError('Native focus kept changing after privacy fallback')
     return result, consent
 
@@ -380,7 +462,6 @@ def _before_close(serial, output_root, check_stop, adb, hierarchy_source):
     if not sizes: raise NativePrivacyError('Device dimensions unavailable')
     size = tuple(map(int,sizes[-1]))
     if not all(0 < n < 20000 for n in size): raise NativePrivacyError('Invalid device dimensions')
-    latest_xml = {}
     def read_hierarchy():
         if hierarchy_source is None: return command('shell','uiautomator','dump','/dev/tty')
         try:
@@ -408,10 +489,12 @@ def _before_close(serial, output_root, check_stop, adb, hierarchy_source):
                 raise NativePrivacyError('Unlocked state not proven')
             (evidence / (label+'-focus.txt')).write_text(current)
             (evidence / (label+'-ui.xml')).write_text(xml)
-            latest_xml[label] = xml
-            classify_focus(current,screen)
             return current,screen
-    def hierarchy(label): return latest_xml[label]
+    def hierarchy(label):
+        check_stop()
+        xml = read_hierarchy()
+        (evidence / (label+'-controls.xml')).write_text(xml)
+        return xml
     def tap(point):
         check_stop()
         if native_identities(command('shell','dumpsys','window')) != (PRIVACY_ACTIVITY,) * 2:
@@ -423,10 +506,10 @@ def _before_close(serial, output_root, check_stop, adb, hierarchy_source):
         return preserve_stable(serial,root,lambda: artifacts.inventory(serial,adb),
                                lambda path: artifacts._read_device(serial,'cat -- '+shlex.quote(path),adb),
                                check_stop=check_stop)
-    initial = classify_focus(*observe('before'))
+    _, initial = reviewed_observation(observe, 'before', check_stop=check_stop)
     result = preserve_cache()
-    after = observe('after-preservation')
-    if classify_focus(*after) != initial:
+    after, after_identity = reviewed_observation(observe, 'after-preservation', check_stop=check_stop)
+    if after_identity != initial:
         # The dialog may have closed itself. A safe freshly observed app needs
         # no consent action, but any newly loaded bytes still need preservation.
         consent = {'attempted':False,'checkbox_tapped':False,'confirm_tapped':False,
@@ -435,7 +518,8 @@ def _before_close(serial, output_root, check_stop, adb, hierarchy_source):
     else:
         observed,consent = resolve_privacy_once(observe,hierarchy,tap,time.sleep,check_stop)
     (evidence/'privacy-fallback.json').write_text(json.dumps(consent,ensure_ascii=False,indent=2))
-    result,consent = preserve_after_privacy(observed,consent,preserve_cache,observe)
+    result,consent = preserve_after_privacy(observed,consent,preserve_cache,observe,
+                                          check_stop=check_stop)
     check_stop()
     receipt = dict(consent,serial=serial,at=datetime.now(timezone.utc).isoformat(),
                    complete=True,packages=len(result['packages']),evidence=str(evidence))

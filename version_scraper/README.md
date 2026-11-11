@@ -105,6 +105,13 @@ Use the same `--config /config/version.json` with these commands:
 | `resume` | Clear an eligible pause or retry pending local processing. |
 | `retry --appids APPID` | Requeue selected outcomes while preserving previous attempts. |
 
+`status` reads the pause checkpoint even when queue progress is temporarily
+unreadable. An incomplete observation returns JSON with `available: false`,
+details in `errors`, and exit code 2. `pause_state` distinguishes `paused`,
+`clear` and `unavailable`; missing progress counts are not reported as zero.
+Repeat `status` to obtain a fresh observation. A failed status read alone does
+not establish that the collector stopped and never clears its saved pause.
+
 Stop acquisition before `report`, `resume` or `retry`. The [example configuration](config.example.json)
 describes pacing and adapter options. Unknown fields are rejected. `load_wait`
 controls the wait after opening an app; its default is 8 seconds.

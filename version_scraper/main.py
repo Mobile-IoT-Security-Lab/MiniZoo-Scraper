@@ -22,6 +22,7 @@ from minizoo_collection.processing import process_acquisition
 from minizoo_collection.public_metadata import search_record
 from phone import Phone, PhoneError, Pacer, RateLimit, Stopped, Suspended, ScreenUnavailable, request
 from store import FileLock, Store, now, read_csv_bytes, sha256, write_json, atomic_write
+from status import read_status, scraping_pause, empty_search_streak
 from visual_phone import VisualPhone
 from search_observation import search_fields, category_record
 from search_hints import load_search_hints, supported_absence, valid_query
@@ -316,27 +317,6 @@ def export_report(store, extra=None):
         writer.writerows(rows)
         atomic_write(store.output / "reports" / "results.csv", stream.getvalue().encode("utf-8-sig"))
     return {k: v for k, v in report.items() if k not in ("tasks", "collections", "csv_decisions")}
-
-
-def scraping_pause(store):
-    """Read the persisted stop marker without automatically resuming searches."""
-    path = store.output / "checkpoints" / "rate_limit_stop.json"
-    if not path.exists():
-        return None
-    value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict) or value.get("schema_version") != 1:
-        raise ValueError("Invalid rate limit checkpoint")
-    return value if value.get("active") else None
-
-
-def empty_search_streak(store):
-    path = store.output / "checkpoints" / "empty_search_streak.json"
-    value = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {
-        "schema_version": 1, "limit": 10, "entries": [], "count": 0}
-    if not isinstance(value, dict) or value.get("schema_version") != 1 or not isinstance(value.get("entries"), list):
-        raise ValueError("Invalid empty-search checkpoint")
-    value["count"] = len(value["entries"])
-    return value
 
 
 def record_scraping_pause(store, event, delay, trigger="explicit_rate_limit", retry_tasks=None):
@@ -865,18 +845,16 @@ def main(argv=None):
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 2 if result["blockers"] else 0
     store = Store(config)
-    if args.command in ("status", "report"):
-        store.open_readonly()
+    if args.command == "status":
+        result = read_status(store)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["available"] else 2
+    if args.command == "report":
         try:
-            if args.command == "status":
-                result = store.report()
-                result = {k: v for k, v in result.items() if k not in ("tasks", "collections", "csv_decisions")}
-                result["scraping_pause"] = scraping_pause(store)
-                result["empty_search_streak"] = empty_search_streak(store)
-            else:
-                verify_volume(config)
-                with FileLock(store.output / ".lock"):
-                    result = export_report(store)
+            store.open_readonly()
+            verify_volume(config)
+            with FileLock(store.output / ".lock"):
+                result = export_report(store)
             print(json.dumps(result, ensure_ascii=False, indent=2))
         finally:
             store.close()
