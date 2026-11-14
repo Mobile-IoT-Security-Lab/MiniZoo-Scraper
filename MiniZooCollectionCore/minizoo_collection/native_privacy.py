@@ -63,6 +63,10 @@ class LoadingPrivacyScreen(NativePrivacyError):
     """Only the reviewed native GDPR loading header is visible."""
 
 
+class TransientNativeFocus(NativePrivacyError):
+    """A known WeChat activity temporarily has no focused window."""
+
+
 def privacy_loading_shell(screen):
     """Recognize an empty GDPR header solely to wait for fresh evidence."""
     try:
@@ -95,6 +99,17 @@ def privacy_loading_shell(screen):
 
 
 def native_identities(focus):
+    current = [line.strip() for line in focus.splitlines() if 'mCurrentFocus=' in line]
+    focused = [line for line in focus.splitlines() if 'mFocusedApp=' in line]
+    if current == ['mCurrentFocus=null'] and len(focused) == 1:
+        match = re.search(r'com\.tencent\.mm/(\.?[A-Za-z0-9_.$]+)', focused[0])
+        if match:
+            activity = match[1]
+            if activity.startswith('.'):
+                activity = 'com.tencent.mm' + activity
+            if (activity == PRIVACY_ACTIVITY or re.fullmatch(
+                    r'com\.tencent\.mm\.plugin\.appbrand\.ui\.AppBrandUI\d*', activity)):
+                raise TransientNativeFocus('Known WeChat activity has no focused window yet')
     identities = []
     for field in ('mCurrentFocus', 'mFocusedApp'):
         lines = [line for line in focus.splitlines() if field + '=' in line]
@@ -118,6 +133,15 @@ def check_security_walls(screen):
         raise NativePrivacySecurity('WeChat requires security verification')
 
 
+def _check_native_activities(identities):
+    for activity in identities:
+        if not (activity in (PRIVACY_ACTIVITY, 'com.tencent.mm.ui.LauncherUI',
+                'com.tencent.mm.plugin.webview.ui.tools.fts.MMFTSSearchTabWebViewUI',
+                'com.tencent.mm.plugin.appbrand.ui.AppBrandPluginUI') or
+                re.fullmatch(r'com\.tencent\.mm\.plugin\.appbrand\.ui\.AppBrandUI\d*', activity)):
+            raise NativePrivacyError('Unexpected native activity: ' + activity)
+
+
 def classify_focus(focus, screen):
     identities = native_identities(focus)
     check_security_walls(screen)
@@ -132,20 +156,17 @@ def classify_focus(focus, screen):
         if not {PRIVACY_TITLE, PRIVACY_AGREEMENT, 'Confirm'} <= texts:
             raise NativePrivacyError('Unrecognized native privacy dialog')
         return identities
-    for activity in identities:
-        if not (activity in ('com.tencent.mm.ui.LauncherUI',
-                'com.tencent.mm.plugin.webview.ui.tools.fts.MMFTSSearchTabWebViewUI',
-                'com.tencent.mm.plugin.appbrand.ui.AppBrandPluginUI') or
-                re.fullmatch(r'com\.tencent\.mm\.plugin\.appbrand\.ui\.AppBrandUI\d*', activity)):
-            raise NativePrivacyError('Unexpected native activity: ' + activity)
+    _check_native_activities(identities)
     return identities
 
 
 def reviewed_observation(observe, label, *, wait=None, check_stop=lambda: None):
-    """Reobserve a loading header or obscured Confirm at most three times.
+    """Reobserve loading UI or missing known native focus at most three times.
 
-    Waiting never authorizes a tap or close. Both native identities, security
-    checks and the complete dialog classification must pass on fresh evidence.
+    Waiting never authorizes a tap or close. A temporarily missing window can
+    only be retried for a known WeChat activity. Security checks run before any
+    retry, and both native identities and the complete screen classification
+    must agree on fresh evidence before an action is admitted.
     """
     wait = time.sleep if wait is None else wait
     for attempt in range(3):
@@ -154,7 +175,8 @@ def reviewed_observation(observe, label, *, wait=None, check_stop=lambda: None):
         check_stop()
         try:
             return observation, classify_focus(*observation)
-        except (IncompletePrivacyScreen, LoadingPrivacyScreen):
+        except (IncompletePrivacyScreen, LoadingPrivacyScreen, TransientNativeFocus):
+            check_security_walls(observation[1])
             if attempt == 2:
                 raise
             check_stop()
@@ -451,8 +473,14 @@ def _before_close(serial, output_root, check_stop, adb, hierarchy_source):
                          if 'mCurrentFocus=' in line or 'mFocusedApp=' in line)
     if not re.search(r'com\.tencent\.mm/(?:com\.tencent\.mm)?\.model\.gdpr\.ui\.MPGdprPolicyUI\b', relevant):
         return None
-    if native_identities(first) != (PRIVACY_ACTIVITY,) * 2:
-        raise NativePrivacyError('Native privacy focus mismatch')
+    try:
+        if native_identities(first) != (PRIVACY_ACTIVITY,) * 2:
+            raise NativePrivacyError('Native privacy focus mismatch')
+    except TransientNativeFocus:
+        # The initial probe only detects whether the privacy fallback applies.
+        # A known GDPR activity without a window must enter the same bounded
+        # focus/XML/focus observations as later transitions; it authorizes no UI.
+        pass
     root = Path(output_root).absolute() / 'native_privacy' / serial
     if root.resolve() != root: raise NativePrivacyError('Unsafe privacy output directory')
     root.mkdir(parents=True,exist_ok=True)
@@ -474,12 +502,21 @@ def _before_close(serial, output_root, check_stop, adb, hierarchy_source):
         check_stop()
         for retry in range(2):
             focus = command('shell','dumpsys','window')
-            identities = native_identities(focus)
+            try:
+                identities = native_identities(focus)
+                _check_native_activities(identities)
+            except TransientNativeFocus:
+                identities = None
             xml = read_hierarchy()
             current = command('shell','dumpsys','window')
-            current_identities = native_identities(current)
+            try:
+                current_identities = native_identities(current)
+                _check_native_activities(current_identities)
+            except TransientNativeFocus:
+                current_identities = None
             screen = screen_from_xml(xml,size)
-            if identities != current_identities:
+            transient = identities is None or current_identities is None
+            if not transient and identities != current_identities:
                 # One bounded re-observation handles a legitimate transition
                 # after Confirm. Never act on the old screen's coordinates.
                 if retry == 0: continue
@@ -487,9 +524,13 @@ def _before_close(serial, output_root, check_stop, adb, hierarchy_source):
             policy = command('shell','dumpsys','window','policy')
             if not re.search(r'(?:showing|isKeyguardShowing|mShowingLockscreen)=false',policy):
                 raise NativePrivacyError('Unlocked state not proven')
-            (evidence / (label+'-focus.txt')).write_text(current)
+            # Return the missing focus together with the captured screen so
+            # reviewed_observation can check security before waiting. Discard
+            # its XML after the wait, even if the second focus already settled.
+            observed_focus = focus if identities is None else current
+            (evidence / (label+'-focus.txt')).write_text(observed_focus)
             (evidence / (label+'-ui.xml')).write_text(xml)
-            return current,screen
+            return observed_focus,screen
     def hierarchy(label):
         check_stop()
         xml = read_hierarchy()

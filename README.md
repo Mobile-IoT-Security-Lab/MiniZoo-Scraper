@@ -91,6 +91,11 @@ limits remain blocking. Saved cache bytes do not certify a successful acquisitio
 
 If that exact dialog is still loading or its **Confirm** button is temporarily
 obscured, the collectors wait for fresh observations before acting.
+During this fallback, a temporarily missing focused window on a recognized
+WeChat dialog or mini app is checked up to three times, two seconds apart.
+No tap or close is allowed until a fresh observation confirms the foreground.
+Ordinary catalogue descriptions, including officially licensed games, do not
+count as authorization requests; real security and rate-limit messages still pause collection.
 Late package downloads receive a bounded cache-preservation retry. Unknown
 screens, changed package bytes and unresolved dialogs still stop the affected
 collector with its evidence saved.
