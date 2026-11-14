@@ -64,17 +64,33 @@ class NativeFocusObservationTests(unittest.TestCase):
 
     def test_catalogue_license_description_is_content_but_security_still_blocks(self):
         focus = fixtures.focus('com.tencent.mm.plugin.appbrand.ui.AppBrandPluginUI')
-        screen = {'width': 1080, 'height': 2400, 'nodes': [
-            {'text': text, 'confidence': 1, 'package': 'com.tencent.mm'}
-            for text in ('Mini Programs', 'Search Mini Programs', 'Recently Used',
-                         'Mini Game', 'Example 官方授权游戏')]}
-        self.assertEqual(m.classify_focus(focus, screen),
-                         ('com.tencent.mm.plugin.appbrand.ui.AppBrandPluginUI',) * 2)
-        for text, error in (('Security verification', m.NativePrivacySecurity),
-                            ('Too many requests', m.NativePrivacyRateLimit)):
-            changed = dict(screen, nodes=screen['nodes'] + [{'text': text, 'confidence': 1}])
-            with self.subTest(text=text), self.assertRaises(error):
-                m.classify_focus(focus, changed)
+        for description in ('Example 官方授权游戏', 'Example 正版IP授权游戏'):
+            for width, height in ((720, 1600), (1080, 2400), (1440, 3200)):
+                for section_top in (.46, .588, .69):
+                    # Synthetic catalogue rows move with their section header;
+                    # licensing wording is content at every position and scale.
+                    rows = [('Mini Programs', .1), ('Search Mini Programs', .2),
+                            ('Recently Used', .3), ('Mini Game', section_top),
+                            ('Example game', section_top + .05),
+                            (description, section_top + .1)]
+                    screen = {'width': width, 'height': height, 'nodes': [
+                        {'text': text, 'confidence': 1, 'package': 'com.tencent.mm',
+                         'bounds': [int(width * .1), int(height * top),
+                                    int(width * .9), int(height * (top + .025))]}
+                        for text, top in rows]}
+                    with self.subTest(description=description, size=(width, height),
+                                      section_top=section_top):
+                        self.assertEqual(m.classify_focus(focus, screen),
+                            ('com.tencent.mm.plugin.appbrand.ui.AppBrandPluginUI',) * 2)
+                        for text, error in (
+                                ('Security verification', m.NativePrivacySecurity),
+                                ('安全验证', m.NativePrivacySecurity),
+                                ('Too many requests', m.NativePrivacyRateLimit),
+                                ('操作频繁', m.NativePrivacyRateLimit)):
+                            warning = dict(screen['nodes'][-1], text=text)
+                            changed = dict(screen, nodes=screen['nodes'] + [warning])
+                            with self.subTest(warning=text), self.assertRaises(error):
+                                m.classify_focus(focus, changed)
 
 
 class PortableFocusRetryTests(unittest.TestCase):
